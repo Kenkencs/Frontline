@@ -92,8 +92,7 @@ export function ChatComposer({
         </div>
       </form>
       <p className="composer-footnote">
-        Prototype only. Responses use sample policies, with no live AI
-        connected.
+        Backend demo · Sample policies · No live AI connected
       </p>
     </div>
   );

@@ -140,7 +140,8 @@ export function WorkspacePages({
                 ))}
               </select>
               <span>
-                All selections use the same mock service in this increment.
+                All selections call the backend, which returns demo responses in
+                this increment.
               </span>
             </label>
             <div className="settings-info">

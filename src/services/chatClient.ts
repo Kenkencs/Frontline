@@ -1,13 +1,47 @@
 import type { ChatRequest, ChatResponse } from "../../shared/chat";
-import { getMockResponse } from "./mockChat";
+import {
+  isRecord,
+  parseChatRequest,
+  parseChatResponse,
+} from "../../shared/validation";
 
-// Every component calls this function. No component knows which transport or provider is used.
+const TIMEOUT_MS = 20_000;
+
+// Components know only this contract, never a provider SDK or an API key.
 export async function sendChat(request: ChatRequest): Promise<ChatResponse> {
-  if (!request.message.trim()) throw new Error("Please enter a message.");
-  if (request.message.length > 4000)
-    throw new Error("Keep your message under 4,000 characters.");
-  await new Promise((resolve) => setTimeout(resolve, 650));
-  return getMockResponse(request);
+  const input = parseChatRequest(request);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+    let value: unknown;
+    try {
+      value = await response.json();
+    } catch {
+      throw new Error("The server did not return JSON. Please retry.");
+    }
+    if (!response.ok) {
+      throw new Error(
+        isRecord(value) && typeof value.error === "string"
+          ? value.error
+          : "Could not get a response. Please retry.",
+      );
+    }
+    return parseChatResponse(value);
+  } catch (error) {
+    if (controller.signal.aborted)
+      throw new Error("The request timed out. Please retry.");
+    if (error instanceof TypeError)
+      throw new Error(
+        "Cannot reach the backend. Please retry when it is available.",
+      );
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
-
-// Stage 2 replaces the body above with fetch('/api/chat', ...). See docs/ARCHITECTURE.md.

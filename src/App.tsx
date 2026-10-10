@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { BookOpen, Check, LoaderCircle } from "lucide-react";
 import type {
   ActionResponse,
@@ -6,7 +6,7 @@ import type {
   EmployeeRole,
   Source,
 } from "../shared/chat";
-import type { Conversation, EscalationDraft, View } from "./types";
+import type { ChatMessage, Conversation, EscalationDraft, View } from "./types";
 import { ActionCard, SourceLinks } from "./components/ActionCard";
 import { Brand } from "./components/Brand";
 import { ChatHeader } from "./components/ChatHeader";
@@ -16,7 +16,14 @@ import { WorkspacePages } from "./components/WorkspacePages";
 import { SourceDialog, EscalationDialog } from "./components/WorkspaceDialogs";
 import { models, roles } from "./data/models";
 import { sendChat } from "./services/chatClient";
-import { allergyAction, getMockResponse } from "./services/mockChat";
+import { allergyAction, openingResponse } from "../shared/demoResponses";
+
+interface FailedRequest {
+  messageId: string;
+  request: ChatRequest;
+  modelLabel: string;
+  message: string;
+}
 
 const initialConversations: Conversation[] = [
   {
@@ -55,12 +62,7 @@ const initialConversations: Conversation[] = [
       {
         id: "opening-assistant",
         author: "assistant",
-        response: getMockResponse({
-          message: "opening shift",
-          employee_role: "waiter",
-          provider: "openai",
-          model: "demo-gpt",
-        }),
+        response: openingResponse,
         modelLabel: "GPT",
         request: {
           message: "What should I check before my shift starts?",
@@ -80,17 +82,20 @@ export default function App() {
   const [role, setRole] = useState<EmployeeRole>("waiter");
   const [modelIndex, setModelIndex] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [errors, setErrors] = useState<
+    Record<string, FailedRequest | undefined>
+  >({});
   const [source, setSource] = useState<Source | null>(null);
   const [draftText, setDraftText] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<EscalationDraft[]>([]);
   const [notice, setNotice] = useState("");
-  const sendingRef = useRef(false);
+  const pendingRef = useRef(new Set<string>());
   const scrollArea = useRef<HTMLDivElement>(null);
   const lastScrollState = useRef("allergy-example:2:false:chat");
   const conversation = conversations.find((item) => item.id === activeId)!;
   const model = models[modelIndex];
+  const sending = pendingIds.includes(activeId);
 
   useEffect(() => {
     const state = `${activeId}:${conversation.messages.length}:${sending}:${view}`;
@@ -108,7 +113,6 @@ export default function App() {
   const changeView = (next: View) => {
     setView(next);
     setSidebarOpen(false);
-    setError("");
   };
   const newConversation = () => {
     const id = crypto.randomUUID();
@@ -120,64 +124,75 @@ export default function App() {
     changeView("chat");
   };
 
-  const submitMessage = async (text: string) => {
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-    setSending(true);
-    setError("");
+  const submitMessage = async (text: string, retry?: FailedRequest) => {
     // Capture the conversation and selection so navigation cannot attach a reply to another chat.
     const targetId = activeId;
-    const selectedModel = model;
-    const request: ChatRequest = {
+    if (pendingRef.current.has(targetId)) return;
+    pendingRef.current.add(targetId);
+    setPendingIds((ids) => [...ids, targetId]);
+    const messageId = retry?.messageId ?? crypto.randomUUID();
+    setErrors((items) => ({ ...items, [messageId]: undefined }));
+    const modelLabel = retry?.modelLabel ?? model.label;
+    const request: ChatRequest = retry?.request ?? {
       message: text,
       employee_role: role,
-      provider: selectedModel.provider,
-      model: selectedModel.model,
+      provider: model.provider,
+      model: model.model,
     };
-    setConversations((items) =>
-      items.map((item) =>
-        item.id === targetId
-          ? {
-              ...item,
-              title: item.messages.length ? item.title : text.slice(0, 38),
-              messages: [
-                ...item.messages,
-                { id: crypto.randomUUID(), author: "worker", text },
-              ],
-            }
-          : item,
-      ),
-    );
-    try {
-      const response = await sendChat(request);
+    // Retry the same request without duplicating the worker's message.
+    if (!retry)
       setConversations((items) =>
         items.map((item) =>
           item.id === targetId
             ? {
                 ...item,
+                title: item.messages.length ? item.title : text.slice(0, 38),
                 messages: [
                   ...item.messages,
-                  {
-                    id: crypto.randomUUID(),
-                    author: "assistant",
-                    response,
-                    modelLabel: selectedModel.label,
-                    request,
-                  },
+                  { id: messageId, author: "worker", text },
                 ],
               }
             : item,
         ),
       );
-    } catch (failure) {
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "Something went wrong. Please try again.",
+    try {
+      const response = await sendChat(request);
+      const reply: ChatMessage = {
+        id: crypto.randomUUID(),
+        author: "assistant",
+        response,
+        modelLabel,
+        request,
+      };
+      setConversations((items) =>
+        items.map((item) =>
+          item.id === targetId
+            ? {
+                ...item,
+                // An older retry belongs beside its original question.
+                messages: item.messages.flatMap((message) =>
+                  message.id === messageId ? [message, reply] : [message],
+                ),
+              }
+            : item,
+        ),
       );
+    } catch (failure) {
+      setErrors((items) => ({
+        ...items,
+        [messageId]: {
+          messageId,
+          request,
+          modelLabel,
+          message:
+            failure instanceof Error
+              ? failure.message
+              : "Something went wrong. Please retry.",
+        },
+      }));
     } finally {
-      sendingRef.current = false;
-      setSending(false);
+      pendingRef.current.delete(targetId);
+      setPendingIds((ids) => ids.filter((id) => id !== targetId));
     }
   };
 
@@ -223,10 +238,29 @@ export default function App() {
                     <div className="messages" aria-live="polite">
                       {conversation.messages.map((message) =>
                         message.author === "worker" ? (
-                          <div className="worker-message" key={message.id}>
-                            <span className="sr-only">You: </span>
-                            {message.text}
-                          </div>
+                          <Fragment key={message.id}>
+                            <div className="worker-message">
+                              <span className="sr-only">You: </span>
+                              {message.text}
+                            </div>
+                            {errors[message.id] && (
+                              <div className="error-message" role="alert">
+                                <p>{errors[message.id]!.message}</p>
+                                <button
+                                  className="button secondary"
+                                  onClick={() => {
+                                    const failure = errors[message.id]!;
+                                    void submitMessage(
+                                      failure.request.message,
+                                      failure,
+                                    );
+                                  }}
+                                >
+                                  Retry request
+                                </button>
+                              </div>
+                            )}
+                          </Fragment>
                         ) : (
                           <div className="assistant-message" key={message.id}>
                             <div className="assistant-byline">
@@ -283,13 +317,8 @@ export default function App() {
                 {sending && (
                   <div className="loading-state" role="status">
                     <LoaderCircle className="spinner" size={17} />
-                    Preparing a demo response…
+                    Waiting for the backend…
                   </div>
-                )}
-                {error && (
-                  <p className="error-message" role="alert">
-                    {error}
-                  </p>
                 )}
               </div>
             </div>

@@ -1,4 +1,4 @@
-// This contract is shared by the UI and the future POST /api/chat endpoint.
+// The UI and POST /api/chat share this contract. Incoming JSON still needs runtime validation.
 export type ProviderId = "openai" | "anthropic" | "deepseek" | "kimi";
 export type EmployeeRole = "waiter" | "cashier" | "kitchen_staff";
 export type RiskLevel = "low" | "medium" | "high";

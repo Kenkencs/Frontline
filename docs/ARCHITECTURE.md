@@ -6,69 +6,63 @@
 React components
        ↓
 sendChat(ChatRequest)
+       ↓ POST /api/chat
+Backend validates input
        ↓
 getMockResponse(request)
        ↓
-ChatResponse → ordinary message or Action Card
+Validated ChatResponse → ordinary message or Action Card
 ```
 
-`shared/chat.ts` defines the contract once. `type` is the discriminator: the UI renders `message` as text and `action` as a card. A source includes an ID, document title, version, section, and excerpt so a worker can open the evidence behind a response.
+`shared/chat.ts` defines the contract once. `type` tells React whether to render a plain message or an Action Card. Sources carry an ID, title, version, section, and excerpt. `shared/validation.ts` checks incoming JSON at runtime; TypeScript alone cannot validate an HTTP response.
 
-The model selector sets `provider` and `model` in the request. Demo IDs such as `demo-gpt` are deliberately not real model IDs. All selectors use the same fixture responses. Roles also provide only mock context in this increment.
+All demo provider/model pairs are listed in `shared/catalog.ts`. The backend rejects unknown or mismatched selections instead of trusting arbitrary IDs. `shared/demoResponses.ts` contains static examples for initial history; new sends always go over HTTP. The frontend contains no response generator.
 
-## The sequence we will follow
-
-| Increment    | Change                                                       | Small success check                                       |
-| ------------ | ------------------------------------------------------------ | --------------------------------------------------------- |
-| 1 — complete | React, mock chat service, normal messages, Action Card       | Allergy example renders with working sample sources       |
-| 2            | Small Node backend with `POST /api/chat`; keep mock response | UI receives the same card over HTTP                       |
-| 3            | One backend-only OpenAI integration                          | Validated live response renders in the same UI            |
-| 4            | Wrap the working integration behind `AIProvider`             | Orchestrator depends on the interface only                |
-| 5            | Anthropic, DeepSeek, and Kimi adapters                       | Same frontend contract works for every configured adapter |
-| 6            | Knowledge Agent with company document retrieval              | Response cites an accessible current document version     |
-| 7            | Risk Agent and Main Agent orchestration                      | Insufficient or uncertain evidence causes escalation      |
-
-We will explain each increment’s decisions before implementing it. The following sections describe the intended future shape; those modules are **not implemented yet**.
-
-## Increment 2: one backend endpoint
-
-A small Node + TypeScript server is a reasonable local starting point. Keep the server in `server/` alongside the frontend. We can choose Express or the native Node HTTP server when we build this increment; no decision is required for stage 1.
+## Increment 2: one handler, two thin adapters
 
 ```text
-React → POST /api/chat → backend mock service → ChatResponse
+Local:  React / Vite → /api proxy → Node HTTP adapter ┐
+                                                     ├→ handleApiRequest → backend mock
+Hosted: React assets → /api/chat → Worker adapter    ┘
 ```
 
-Replace the mock inside `sendChat()` with a same-origin request:
+The two adapters are necessary because local development uses Node while the existing hosted site runs Cloudflare Workers. They share `server/api.ts`; neither contains workplace or provider logic. This preserves the React UI without introducing a new framework.
 
-```ts
-export async function sendChat(request: ChatRequest): Promise<ChatResponse> {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (!response.ok)
-    throw new Error("Could not get a response. Please try again.");
-  return parseChatResponse(await response.json());
-}
-```
+- `server/api.ts` accepts `POST /api/chat`, reads up to 32 KiB, validates fields, calls the backend mock, validates the reply, and returns JSON with `Cache-Control: no-store`.
+- `server/nodeServer.ts` converts Node HTTP requests/responses to the Fetch API used by the handler. `server/dev.ts` binds it to loopback port 3001.
+- `server/worker.ts` sends API routes to the same handler and other requests to the frontend assets binding. Private access remains enforced by Sites.
+- `vite.config.ts` proxies `/api` during development and preview. The browser calls only its own origin, so no broad CORS setup is needed.
+- `src/services/chatClient.ts` uses `fetch`, a 20-second timeout, HTTP error handling, and runtime response validation. It never silently falls back to fixtures.
+- `src/App.tsx` keeps pending/errors per conversation. Retry retains the originating role/model/question and adds no duplicate worker message.
 
-`parseChatResponse` is a future runtime validator, not a type cast. Add validation in increment 2. For local development, configure Vite to proxy `/api` to the Node server. For production, choose a hosting setup that routes frontend and backend under the same origin before deployment. The current static preview does not have a backend.
-
-The backend will validate the message size, role, provider, allowed model ID, and returned response. Invalid input should return a clear `400` response, upstream failure a sanitized error. Keep provider-specific errors and secrets out of client responses.
-
-The requested request shape stays simple:
+The request stays simple:
 
 ```json
 {
   "message": "Customer is allergic to peanuts. What should I do?",
   "employee_role": "waiter",
   "provider": "openai",
-  "model": "backend-approved-model-id"
+  "model": "demo-gpt"
 }
 ```
 
-For conversational follow-ups, extend the request contract deliberately with bounded message history or a conversation ID in that increment. Stage 1 sends only one message to the mock and does not interpret follow-ups. A visible history is not automatically model memory.
+The backend checks nonblank messages of at most 4,000 characters, employee role, and the approved provider/model pair. It reconstructs known fields and ignores arbitrary extra properties. Errors use `{ "error": "message" }` with `400`, `413`, `415`, `405`, `404`, or a sanitized `500`. Worker questions and internal errors are not logged or returned.
+
+Responses remain the existing `ChatResponse`. Changing the backend implementation will not require rewriting the cards. Conversation history and drafts live only in React memory; the API receives one question and has no conversational memory. Add bounded history or a conversation ID deliberately when implementing follow-ups.
+
+## The sequence we will follow
+
+| Increment    | Change                                            | Small success check                                  |
+| ------------ | ------------------------------------------------- | ---------------------------------------------------- |
+| 1 — complete | React, mock responses, Action Card                | Allergy example and sample sources render            |
+| 2 — complete | Common HTTP endpoint; backend mock                | UI receives the same card over HTTP                  |
+| 3            | One backend-only OpenAI integration               | Validated live reply renders in the same UI          |
+| 4            | Extract `AIProvider` from the working integration | Application logic depends on the interface           |
+| 5            | Anthropic, DeepSeek, Kimi adapters                | Same contract works for every configured adapter     |
+| 6            | Knowledge Agent with company retrieval            | Accessible current document versions are cited       |
+| 7            | Risk Agent and Main Agent orchestration           | Uncertain or insufficient evidence causes escalation |
+
+We explain decisions before implementing each increment. The following sections describe future modules; they are **not implemented yet**.
 
 ## Increments 3–5: replaceable providers
 
@@ -134,9 +128,9 @@ AIProvider
       └─ KimiProvider
 ```
 
-Only the backend reads `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, and `KIMI_API_KEY`. The current `.env.example` reserves those names; stage 1 needs none. Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint.
+Only the backend will read `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, and `KIMI_API_KEY`. The current `.env.example` reserves those names; increment 2 needs none. Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint.
 
-Before real employee use, the backend will also need employee/manager identity, company-scoped document access, and sensible request limits. The role dropdown is context, not authentication or manager authorization. These are future deployment requirements, not additional stage-1 features.
+Before real employee use, the backend will also need employee/manager identity, company-scoped document access, and sensible request limits. The role dropdown is context, not authentication or manager authorization. These are future deployment requirements, not additional increment-2 features.
 
 ## Increments 6–7: exactly 1 + 2 agents
 
@@ -164,4 +158,4 @@ Missing evidence or uncertainty should produce explicit escalation, not invented
 
 ## What is intentionally deferred
 
-Live provider implementations, backend endpoints, provider-side streaming, document uploads, RAG, version checking, real risk evaluation, authentication, persistent conversations, real manager notifications, and an agent framework. The stage-1 model selector and sample knowledge pages are UI prototypes, not evidence that these capabilities exist.
+Live provider implementations, provider-side streaming, document uploads, RAG, version checking, real risk evaluation, application-level employee authentication, persistent conversations, real manager notifications, and an agent framework. The demo model selector and sample knowledge pages are UI prototypes, not evidence that these capabilities exist.
