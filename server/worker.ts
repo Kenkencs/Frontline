@@ -9,7 +9,9 @@ export default {
   async fetch(request: Request, env: WorkerEnvironment): Promise<Response> {
     const path = new URL(request.url).pathname;
     if (path === "/api" || path.startsWith("/api/"))
-      return handleApiRequest(request, { openaiApiKey: env.OPENAI_API_KEY });
+      return handleApiRequest(request, {
+        apiKeys: { openai: env.OPENAI_API_KEY },
+      });
     return env.ASSETS.fetch(request);
   },
 };

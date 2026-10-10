@@ -9,7 +9,9 @@ try {
 }
 
 // Loopback only. Vite proxies /api here, so the browser uses one origin.
-const server = createApiServer({ openaiApiKey: process.env.OPENAI_API_KEY });
+const server = createApiServer({
+  apiKeys: { openai: process.env.OPENAI_API_KEY },
+});
 server.listen(3001, "127.0.0.1", () =>
   console.log("Backend: http://127.0.0.1:3001/api/chat"),
 );

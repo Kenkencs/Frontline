@@ -5,13 +5,11 @@ import {
 } from "../shared/validation";
 import { getMockResponse } from "./mockChat";
 import { models } from "../shared/catalog";
-import { generateOpenAIChat, OpenAIChatError } from "./openaiChat";
+import { generateChat } from "./chat";
+import { ProviderError } from "./providers/AIProvider";
+import { createProvider, type ProviderConfig } from "./providers/registry";
 
-export interface ApiOptions {
-  openaiApiKey?: string;
-  // Native fetch in production; a fake upstream in tests. No provider framework yet.
-  fetchImpl?: typeof fetch;
-}
+export type ApiOptions = ProviderConfig;
 
 export function jsonResponse(
   value: unknown,
@@ -106,14 +104,10 @@ export async function handleApiRequest(
     const response =
       selection.mode === "demo"
         ? getMockResponse(input)
-        : await generateOpenAIChat(
-            input,
-            options.openaiApiKey,
-            options.fetchImpl,
-          );
+        : await generateChat(input, createProvider(input.provider, options));
     return jsonResponse(parseChatResponse(response));
   } catch (error) {
-    if (error instanceof OpenAIChatError)
+    if (error instanceof ProviderError)
       return jsonResponse({ error: error.message }, error.status);
     // Do not expose internal errors, keys, or worker questions.
     return jsonResponse(

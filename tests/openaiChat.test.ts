@@ -63,7 +63,7 @@ function completion(reply: unknown): Response {
 }
 
 function options(fetchImpl: typeof fetch): ApiOptions {
-  return { openaiApiKey: TEST_KEY, fetchImpl };
+  return { apiKeys: { openai: TEST_KEY }, fetchImpl };
 }
 
 async function assertError(
@@ -149,7 +149,7 @@ test("live /api/chat sends a strict Responses request and returns the action con
       message: `  ${input.message}  `,
       api_key: "client-injected",
     }),
-    { openaiApiKey: ` ${TEST_KEY} `, fetchImpl: fakeFetch },
+    { apiKeys: { openai: ` ${TEST_KEY} ` }, fetchImpl: fakeFetch },
   );
   assert.equal(calls, 1);
   assert.equal(response.status, 200);
@@ -177,10 +177,10 @@ test("every demo bypasses upstream with or without a configured key", async () =
     throw new Error("A demo must never call a paid provider");
   };
   for (const model of models.filter((item) => item.mode === "demo")) {
-    for (const openaiApiKey of [undefined, TEST_KEY]) {
+    for (const key of [undefined, TEST_KEY]) {
       const response = await handleApiRequest(
         request({ ...input, provider: model.provider, model: model.model }),
-        { openaiApiKey, fetchImpl: fakeFetch },
+        { apiKeys: { openai: key }, fetchImpl: fakeFetch },
       );
       assert.equal(response.status, 200);
       assert.equal(parseChatResponse(await response.json()).type, "action");
@@ -195,9 +195,9 @@ test("missing and blank backend keys return 503 without calling upstream", async
     calls += 1;
     return completion(action);
   };
-  for (const openaiApiKey of [undefined, "", "   "]) {
+  for (const key of [undefined, "", "   "]) {
     const response = await handleApiRequest(request(), {
-      openaiApiKey,
+      apiKeys: { openai: key },
       fetchImpl: fakeFetch,
     });
     assert.match(await assertError(response, 503), /not configured/);

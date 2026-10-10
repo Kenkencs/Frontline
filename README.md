@@ -1,6 +1,6 @@
 # Frontline Workplace Knowledge Agent
 
-This is **increment 3: React → backend API → one OpenAI integration → Action Card**. The code now supports a live GPT-4.1 mini selection through the same `POST /api/chat` endpoint. Four clearly labeled demo selections still use fixtures. The live integration is ready for verification, but the current machine cannot reach OpenAI and hosted live activation is pending. Retrieval and specialist agents remain later increments.
+This is **increment 4: React → backend API → provider interface → Action Card**. Application logic now calls the common `AIProvider` interface; one OpenAI adapter is implemented. GPT-4.1 mini uses the same `POST /api/chat` endpoint as four clearly labeled demo selections. The current machine still cannot reach OpenAI, and hosted live activation is pending. Source-level architecture work can proceed with fake providers while those external limits are unresolved.
 
 ## Run it
 
@@ -41,15 +41,37 @@ Demo keyword matching demonstrates rendering. Live GPT uses a conservative promp
 2. `src/services/chatClient.ts`: the frontend’s only chat transport, using `fetch('/api/chat')`.
 3. `server/api.ts`: validates HTTP input and returns the standard response or a JSON error.
 4. `shared/catalog.ts`: approved provider/model selections and their live/demo mode.
-5. `server/openaiChat.ts`: one OpenAI Responses request, error handling, and evidence checks.
-6. `server/responseSchema.ts`: strict message/action schema, nested in a root object and unwrapped on the backend.
-7. `server/mockChat.ts`: demo behavior, kept separate from the live path.
-8. `shared/validation.ts`: checks incoming JSON at runtime, on both sides.
-9. `src/components/ActionCard.tsx`: renders an action response without knowing its provider.
-10. `server/nodeServer.ts` and `server/worker.ts`: small local/hosted adapters.
-11. `src/App.tsx`: coordinates conversations, role, model, and dialogs.
+5. `server/providers/AIProvider.ts`: common input/output types, three methods, and safe provider errors.
+6. `server/chat.ts`: workplace prompt and evidence checks, using only the common interface.
+7. `server/providers/OpenAIProvider.ts`: translates that interface into the OpenAI Responses API.
+8. `server/providers/registry.ts`: selects an implemented adapter from the requested provider.
+9. `server/responseSchema.ts`: strict message/action schema, nested in a root object and unwrapped on the backend.
+10. `server/mockChat.ts`: demo behavior, kept separate from the live path.
+11. `shared/validation.ts`: checks incoming JSON at runtime, on both sides.
+12. `src/components/ActionCard.tsx`: renders an action response without knowing its provider.
+13. `server/nodeServer.ts` and `server/worker.ts`: small local/hosted adapters.
+14. `src/App.tsx`: coordinates conversations, role, model, and dialogs.
 
 There is no application router, database, state-management library, agent framework, or provider SDK. Node’s native HTTP server is sufficient here. `tsx` runs the TypeScript backend and Node’s built-in test runner. Read `docs/ARCHITECTURE.md` for the current flow and the remaining increments.
+
+## Provider interface
+
+```ts
+interface AIProvider {
+  generate(input: ProviderInput): Promise<string>;
+  structuredGenerate<T>(
+    input: ProviderInput,
+    schema: OutputSchema<T>,
+  ): Promise<T>;
+  stream(input: ProviderInput): AsyncIterable<string>;
+}
+```
+
+`ProviderInput` contains the model, system prompt, user prompt, and optional output-token limit. `OutputSchema` contains a name, JSON schema, and runtime parser. None contains SDK types or keys. The chat module uses `structuredGenerate()`; its evidence safeguards also check the parsed result, so they apply to every future provider.
+
+OpenAI supports plain `generate()` and validated `structuredGenerate()` here. `stream()` is reserved in the interface but currently throws a controlled `501`; backend streaming and UI streaming remain deferred until the complete live flow is verified. The API never renders an unfinished Action Card.
+
+The factory currently constructs only `OpenAIProvider`. Increment 5 will add Anthropic, DeepSeek, and Kimi adapters there, plus approved live model entries and server key bindings. Their existing demo choices still return fixtures. Switching to a future implemented provider will keep the same React transport and response contract.
 
 ## API
 
@@ -67,7 +89,7 @@ Live GPT reads `OPENAI_API_KEY` only on the backend. The local Node server loads
 
 OpenAI Developers securely created a project key and saved it to the approved local `.env`, with a 30-day expiration. No key value appears in this source or downloadable package. Replace the key before its expiration when continuing development; the application does not rotate keys automatically.
 
-The existing private Sites deployment uses a Cloudflare Worker plus the React static assets. Its access audience is preserved. `scripts/prepare-hosting.mjs` writes non-secret build configuration; `server/worker.ts` delegates assets through the [Cloudflare assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). The Worker expects `OPENAI_API_KEY` as a hosted runtime secret; local `.env` is never deployed. Current tooling has no secure file-to-Sites-secret handoff, so the hosted site remains on increment 2 pending that setup. The local source/build contains increment 3.
+The existing private Sites deployment uses a Cloudflare Worker plus the React static assets. Its access audience is preserved. `scripts/prepare-hosting.mjs` writes non-secret build configuration; `server/worker.ts` delegates assets through the [Cloudflare assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). The Worker expects `OPENAI_API_KEY` as a hosted runtime secret; local `.env` is never deployed. Current tooling has no secure file-to-Sites-secret handoff, so the hosted site remains on increment 2 pending that setup. The local source/build contains increment 4.
 
 The OpenAI call uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) supports this format. The schema helps enforce shape; runtime validation also rejects invented citations, unsupported confidence, and high risk without escalation. These checks are not a complete safety evaluator.
 

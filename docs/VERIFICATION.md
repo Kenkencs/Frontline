@@ -56,3 +56,20 @@ Checked on 10 October 2026:
 The current source is increment 3. Hosted live activation remains pending: Sites accepts a plaintext secret value through its native setter, but available tools provide no secure handoff from the approved local env file. No key was transferred to hosting, and the published Site remains on increment 2. Publishing the new Worker should follow hosted secret setup. No frontend-key or plaintext-output workaround was used.
 
 The live response schema and runtime evidence checks were tested against fake upstream responses; a real schema/model compatibility check remains outstanding because of the network timeout. Company retrieval, policy-version verification, a separate Risk Agent, and provider abstraction are still future work.
+
+# Increment 4 verification
+
+Checked on 10 October 2026:
+
+- All 38 tests passed. Eight new tests verify the common provider interface with a fake provider, application-level response validation, plain text generation, generic structured parsing, safe parsing failures, unsupported provider selection, and the deferred streaming error. The existing OpenAI/API tests passed after moving transport code into its adapter.
+- TypeScript and the production React/Worker build passed. No SDK, runtime dependency, agent framework, or frontend change was added.
+- The built Worker returned a demo allergy Action Card with HTTP `200`, high risk, and escalation. A live selection without its backend secret returned the expected JSON `503`.
+- Production frontend assets contain no provider endpoint, backend secret variable name, environment read, or project-key pattern.
+- `server/chat.ts` uses only `AIProvider.structuredGenerate()`. The provider factory selects the OpenAI adapter; workplace instructions and evidence checks remain in the common chat module. A fake provider successfully produced both reply types through that module without an OpenAI request.
+- `OpenAIProvider.generate()` and `structuredGenerate()` are implemented and tested with fake upstream responses. `stream()` deliberately returns a controlled unsupported error (`501`) without starting a network request. Streaming is deferred until the application needs it.
+- An escalated, unauthenticated connectivity check still timed out before receiving an OpenAI response. No additional key was created, and no paid live request was made in this increment.
+- Hosted environment inspection still reported no secret entries. The available secure local-key workflow has no supported handoff to the native Sites secret setter, so the approved local key was not printed or transferred through ordinary tool output.
+
+The current source and starter ZIP are increment 4. Automatic approval review initially rejected uploading this increment to the private Sites repository because it would not accept the earlier approval retrieved from thread history. The user then explicitly approved uploading the verified source, excluding secrets, to the existing private project and saving a version without deployment. The checkpoint save result is recorded in the chat handoff.
+
+The published Site remains on increment 2 while hosted secret setup is pending. Real OpenAI response verification remains outstanding because of the transport timeout. Other live provider adapters, company retrieval, policy-version checks, and the separate Risk Agent remain future increments. The unchanged frontend was not given another browser pass in this backend-only increment.
