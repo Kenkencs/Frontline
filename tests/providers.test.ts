@@ -8,6 +8,9 @@ import {
   type ProviderInput,
 } from "../server/providers/AIProvider";
 import { OpenAIProvider } from "../server/providers/OpenAIProvider";
+import { AnthropicProvider } from "../server/providers/AnthropicProvider";
+import { DeepSeekProvider } from "../server/providers/DeepSeekProvider";
+import { KimiProvider } from "../server/providers/KimiProvider";
 import { createProvider } from "../server/providers/registry";
 import type {
   ActionResponse,
@@ -49,9 +52,7 @@ const message: ChatResponse = {
 function completedText(text: string): Response {
   return Response.json({
     status: "completed",
-    output: [
-      { type: "message", content: [{ type: "output_text", text }] },
-    ],
+    output: [{ type: "message", content: [{ type: "output_text", text }] }],
   });
 }
 
@@ -223,7 +224,9 @@ test("structuredGenerate sanitizes schema parser failures", async () => {
       throw new Error(`${PRIVATE_DETAIL}: ${TEST_KEY}`);
     },
   };
-  const provider = new OpenAIProvider(TEST_KEY, async () => completedText("{}"));
+  const provider = new OpenAIProvider(TEST_KEY, async () =>
+    completedText("{}"),
+  );
   await assert.rejects(
     () => provider.structuredGenerate(providerInput, schema),
     controlledError(502),
@@ -249,7 +252,7 @@ test("structuredGenerate rejects malformed JSON before calling the schema parser
   assert.equal(parseCalls, 0);
 });
 
-test("registry maps only implemented live providers and never falls back to OpenAI", async () => {
+test("registry maps all four live providers and never falls back for unknown IDs", async () => {
   let calls = 0;
   const fakeFetch: typeof fetch = async () => {
     calls += 1;
@@ -266,12 +269,18 @@ test("registry maps only implemented live providers and never falls back to Open
   };
   const provider = createProvider("openai", config);
   assert.ok(provider instanceof OpenAIProvider);
-  assert.equal(await provider.generate(providerInput), "Registry-selected provider");
+  assert.equal(
+    await provider.generate(providerInput),
+    "Registry-selected provider",
+  );
   assert.equal(calls, 1);
-  const unsupported: ProviderId[] = ["anthropic", "deepseek", "kimi"];
-  for (const id of unsupported) {
-    assert.throws(() => createProvider(id, config), controlledError(501));
-  }
+  assert.ok(createProvider("anthropic", config) instanceof AnthropicProvider);
+  assert.ok(createProvider("deepseek", config) instanceof DeepSeekProvider);
+  assert.ok(createProvider("kimi", config) instanceof KimiProvider);
+  assert.throws(
+    () => createProvider("unknown" as ProviderId, config),
+    controlledError(501),
+  );
   assert.equal(calls, 1);
 });
 
@@ -283,7 +292,8 @@ test("stream explicitly reports deferred support without calling upstream", asyn
   });
   const chunks: string[] = [];
   await assert.rejects(async () => {
-    for await (const chunk of provider.stream(providerInput)) chunks.push(chunk);
+    for await (const chunk of provider.stream(providerInput))
+      chunks.push(chunk);
   }, controlledError(501));
   assert.deepEqual(chunks, []);
   assert.equal(calls, 0);

@@ -73,3 +73,21 @@ Checked on 10 October 2026:
 The current source and starter ZIP are increment 4. Automatic approval review initially rejected uploading this increment to the private Sites repository because it would not accept the earlier approval retrieved from thread history. The user then explicitly approved uploading the verified source, excluding secrets, to the existing private project and saving a version without deployment. The checkpoint save result is recorded in the chat handoff.
 
 The published Site remains on increment 2 while hosted secret setup is pending. Real OpenAI response verification remains outstanding because of the transport timeout. Other live provider adapters, company retrieval, policy-version checks, and the separate Risk Agent remain future increments. The unchanged frontend was not given another browser pass in this backend-only increment.
+
+# Increment 5 verification
+
+Checked on 10 October 2026:
+
+- All 47 tests passed. Nine new parameterized tests cover Anthropic, DeepSeek, and Kimi using fake credentials and responses. They verify correct endpoint/key selection, both reply types, missing-key isolation, demo isolation, plain/structured generation, refusal, malformed or incomplete output, tool/ambiguous output rejection, sanitized transport failures, 15-second aborts, and Worker key bindings.
+- All live routes use the common evidence checks. The tests reject invented citations, unsupported confidence, high risk without escalation, and nine-action responses. The shared runtime validator now enforces the output schema's eight-action limit.
+- Claude schema transformation preserves keyword-like property names and the original schema. API-facing unsupported bounds are removed without changing the application's parser or evidence checks.
+- The existing OpenAI tests passed after its HTTP/error handling moved into the same shared helper used by the other adapters. No provider SDK or runtime dependency was added.
+- TypeScript and the production React/Worker build passed. The built Worker returned HTTP `200` Action Cards for all four demo selections and controlled JSON `503` responses for all four live selections without configured keys.
+- Production frontend assets contain no provider endpoint, backend key variable name, server environment read, or project-key pattern. Git still excludes the real `.env`.
+- Local browser checks showed all eight live/demo choices. Selecting live Claude and sending a question produced its missing-key error and retry button. Switching to live Kimi and sending another question produced the Kimi error while retaining the original Claude failure; no demo card or alternative-provider reply appeared.
+- A local screenshot in the outputs folder records those provider-selection/error states. Browser verification used the narrow in-app viewport; the unchanged chat/card layout was not given a new full device or accessibility pass.
+- Current provider request formats and selected model IDs were checked against official provider documentation. Fake-response tests verify our implementation, not actual account/model access or real API schema compatibility.
+
+Increment 5 adds live adapter code and backend key bindings, not new credentials. No additional key was created, no plaintext secret was exposed, and no paid provider call was made in this increment. The prior OpenAI connectivity failure remains unresolved; Anthropic, DeepSeek, and Kimi keys are not configured. Real generated replies remain unverified.
+
+This increment is saved as a private source checkpoint without deployment; the confirmed version is recorded in the chat handoff. The published Site remains on increment 2, and secure hosted secret setup remains pending. Streaming still returns a controlled `501` for all adapters. Company retrieval, policy-version verification, and the Knowledge/Risk/Main Agent workflow remain future increments.

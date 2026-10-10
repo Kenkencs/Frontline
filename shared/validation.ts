@@ -21,8 +21,7 @@ export function parseChatRequest(value: unknown): ChatRequest {
   const model = models.find(
     (item) => item.provider === value.provider && item.model === value.model,
   );
-  if (!model)
-    throw new Error("Choose a supported provider and model pair.");
+  if (!model) throw new Error("Choose a supported provider and model pair.");
   // Reconstruct known fields; do not forward arbitrary client properties.
   return {
     message: value.message.trim(),
@@ -58,6 +57,7 @@ function isChatResponse(value: unknown): value is ChatResponse {
     !!value.summary.trim() &&
     Array.isArray(value.actions) &&
     value.actions.length > 0 &&
+    value.actions.length <= 8 &&
     value.actions.every(
       (action) => typeof action === "string" && !!action.trim(),
     ) &&

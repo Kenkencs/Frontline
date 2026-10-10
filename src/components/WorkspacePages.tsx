@@ -140,9 +140,9 @@ export function WorkspacePages({
                 ))}
               </select>
               <span>
-                GPT-4.1 mini uses live AI when the backend key is configured.
-                Other selections use demo responses. Live AI has no company
-                documents yet.
+                Live models use the selected provider when its backend key is
+                configured. Demo selections use sample responses. Live AI has no
+                company documents yet.
               </span>
             </label>
             <div className="settings-info">

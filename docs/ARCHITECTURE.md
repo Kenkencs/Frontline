@@ -10,18 +10,20 @@ sendChat(ChatRequest)
 Backend validates input
        ↓ checks the approved model selection
        ├─ Demo model → getMockResponse(request)
-       └─ Live GPT  → generateChat(request, AIProvider)
+       └─ Live model → generateChat(request, AIProvider)
                             ↓
-                     OpenAIProvider → OpenAI Responses API
+                   selected provider adapter → provider API
        ↓
 Validated ChatResponse → ordinary message or Action Card
 ```
 
 `shared/chat.ts` defines the contract once. `type` tells React whether to render a plain message or an Action Card. Sources carry an ID, title, version, section, and excerpt. `shared/validation.ts` checks incoming JSON at runtime; TypeScript alone cannot validate an HTTP response.
 
-`shared/catalog.ts` lists four demo provider/model pairs and one live OpenAI model, `gpt-4.1-mini`. Each entry has a `mode` of `demo` or `live`. The backend rejects unknown or mismatched selections instead of trusting arbitrary IDs. Demo IDs always use fixtures, even when a backend key exists; selecting live GPT never silently falls back to a demo or another provider.
+`shared/catalog.ts` lists four demo choices and four approved live provider/model pairs. Each entry has a `mode` of `demo` or `live`. The backend rejects unknown or mismatched selections instead of trusting arbitrary IDs. Demo IDs always use fixtures, even when a backend key exists; selecting a live model never silently falls back to a demo or another provider.
 
-`shared/demoResponses.ts` contains static examples for initial history; new sends always go over HTTP. The frontend contains no response generator. Increments 3 and 4 are implemented in source: one OpenAI integration and a small provider interface. A key was securely saved to the approved local `.env`, but a real OpenAI reply is still unverified because outbound requests time out before receiving an API response. Hosted secret handoff is also pending, so the published Site remains on increment 2. The abstraction could be developed independently of those unchanged connectivity and hosting blockers.
+`shared/demoResponses.ts` contains static examples for initial history; new sends always go over HTTP. The frontend contains no response generator. Increments 3–5 are implemented in source: the OpenAI integration, common interface, and three additional adapters. These are code-ready changes, not verified live integrations. The earlier local OpenAI attempt timed out before receiving an API response; the other provider keys are not configured, and no real provider calls were made for increment 5. Secure hosted secret handoff is still pending.
+
+Increment 5 is a source checkpoint only. It does not deploy a new Site version; the published Site remains on increment 2. Developing the adapters does not resolve the separate connectivity and hosting blockers.
 
 ## Increment 2: one handler, two thin adapters
 
@@ -57,18 +59,20 @@ Responses remain the existing `ChatResponse`. Changing the backend implementatio
 
 ## Increments 3–4: one provider behind a small interface
 
+Increment 3 introduced the OpenAI request. Increment 4 separated application rules from provider-specific transport. The same path now works with any adapter selected by the factory:
+
 ```text
-POST /api/chat with provider: "openai", model: "gpt-4.1-mini"
+POST /api/chat with an approved provider/model pair
        ↓
 server/api.ts validates the request and selects the live path
        ↓
-createProvider("openai", backend config) → OpenAIProvider
+createProvider(input.provider, backend config) → AIProvider
        ↓
 server/chat.ts calls AIProvider.structuredGenerate(...)
        ↓
-OpenAIProvider → native fetch → OpenAI Responses API
+selected adapter → native fetch → provider API
        ↓
-{ response: message | action } from a strict JSON schema
+provider-specific response → { response: message | action }
        ↓ unwrap, validate, check evidence rules
 The same ChatResponse used by the demo → React
 ```
@@ -76,9 +80,11 @@ The same ChatResponse used by the demo → React
 The responsibilities are split into small files:
 
 - `server/providers/AIProvider.ts` defines plain application types and the common `generate`, `structuredGenerate`, and `stream` methods. It also defines `ProviderError`, which carries a safe application-written message and HTTP status. No SDK types or environment variables appear in the interface.
-- `server/providers/OpenAIProvider.ts` translates those types into an OpenAI Responses API call using native `fetch`. It handles authentication, the 15-second timeout, HTTP errors, refusals, incomplete responses, and output extraction. Plain `generate` returns text; `structuredGenerate` parses JSON and invokes the supplied schema parser. It requests `store: false`. There is no provider SDK or agent framework.
-- `server/providers/registry.ts` is a simple factory with an explicit OpenAI case. Backend configuration has an `apiKeys` object keyed by `ProviderId`. Unsupported live providers raise a safe `501` error. Demo requests bypass the factory entirely.
-- `server/chat.ts` owns the workplace prompt, the output schema parser, and the common evidence checks. It calls only the `AIProvider` interface and limits the chat output to 1,200 tokens. The API handler chooses a provider through the factory; it contains no OpenAI request code.
+- The four concrete provider files translate the common types into each API's request and extract its completed answer. Plain `generate` returns text; `structuredGenerate` parses JSON and invokes the supplied schema parser. There is no provider SDK or agent framework.
+- `server/providers/registry.ts` is a simple factory with one explicit case per provider. Backend configuration has an `apiKeys` object keyed by `ProviderId`. Demo requests bypass the factory entirely.
+- `server/providers/request.ts` shares HTTP plumbing: key checks, authentication headers, native `fetch`, the 15-second abort timeout, sanitized errors, JSON parsing, and the unsupported-stream response. Each adapter still owns its endpoint and payload.
+- `server/providers/chatCompletion.ts` shares JSON prompt construction and completed-response parsing for DeepSeek and Kimi. It accepts one nonempty assistant answer with `finish_reason: "stop"` and rejects unfinished responses or tool calls. It never renders reasoning content. These helpers are ordinary functions, not a plugin system or base class.
+- `server/chat.ts` owns the workplace prompt, the output schema parser, and the common evidence checks. It calls only the `AIProvider` interface and limits the chat output to 1,200 tokens. `server/api.ts` chooses a provider through the factory and translates common errors; it contains no provider-specific request code.
 - `server/responseSchema.ts` describes the two possible response shapes. The schema has an object at its root, with the message/action union nested under `response`. Its parser in `chat.ts` unwraps that envelope into the existing `ChatResponse`, so the frontend contract does not change.
 
 A small interface is enough:
@@ -109,15 +115,15 @@ interface AIProvider {
 
 `OutputSchema<T>` combines the provider-facing JSON schema with the application's runtime parser. TypeScript cannot establish that remote JSON is valid; `parse` must check it. The generic result lets future callers request another validated structure without adding workplace-specific types to the adapter.
 
-Tests can pass a fake `fetch` through the factory's backend configuration to inspect an OpenAI request without a real API call. They can also provide an `AIProvider` directly to `generateChat`. No dependency-injection framework is needed.
+Tests can pass a fake `fetch` through the factory's backend configuration to inspect provider requests without real API calls. They can also provide an `AIProvider` directly to `generateChat`. No dependency-injection framework is needed.
 
-The live path has no company documents or product records. Its schema and the shared checks in `chat.ts` require empty `sources` and low confidence for Action Cards. The demo cards still show clearly labeled fictional sample policies. Live GPT must not copy those sample citations or claim a policy was checked. Keeping these rules in `chat.ts` means future providers will receive the same checks.
+The live path has no company documents or product records. The shared checks in `chat.ts` require empty `sources` and low confidence for Action Cards. `shared/validation.ts` accepts only 1–8 nonempty actions. These application checks apply to every provider, including those whose API does not enforce our full schema. The demo cards still show clearly labeled fictional sample policies. Live models must not copy those sample citations or claim a policy was checked.
 
 The prompt asks for conservative guidance, including escalation for severe allergies and possible harm. The backend also rejects an Action Card marked high risk without escalation. These checks do not prove that every situation was classified correctly. Prompt instructions are not a Risk Agent; evidence retrieval and a separate risk evaluation remain later increments.
 
-The upstream call has a 15-second abort timeout, inside the frontend's 20-second request timeout. Missing keys or authentication failures return `503`; usage limits return `429`; model refusals return `422`; timeouts return `504`; network failures and incomplete, malformed, or unusable upstream results return `502`. `server/api.ts` translates `ProviderError` into the common JSON error shape. The backend never forwards raw provider errors, headers, or keys. The UI retains the original question for retry.
+The upstream call has a 15-second abort timeout, inside the frontend's 20-second request timeout. Missing keys or authentication failures return `503`; usage limits return `429`; recognized model refusals return `422`; timeouts return `504`; network failures and incomplete, malformed, or unusable upstream results return `502`. Other upstream HTTP failures use a sanitized `502`. `server/api.ts` translates `ProviderError` into the common JSON error shape. The backend never forwards raw provider errors, headers, or keys. The UI retains the original question for retry.
 
-Streaming is reserved in the interface but explicitly unsupported in `OpenAIProvider`: consuming the stream raises `ProviderError` with status `501`. `/api/chat` uses only complete structured responses. Enable streaming after the non-streamed live path is verified, and validate a complete Action Card before presenting it as actionable.
+Streaming is reserved in the interface but explicitly unsupported in all four adapters: consuming a stream raises `ProviderError` with status `501`. `/api/chat` uses only complete structured responses. Enable streaming after the non-streamed live paths are verified, and validate a complete Action Card before presenting it as actionable.
 
 ## The sequence we will follow
 
@@ -127,17 +133,17 @@ Streaming is reserved in the interface but explicitly unsupported in `OpenAIProv
 | 2 — complete   | Common HTTP endpoint; backend mock               | UI receives the same card over HTTP                                    |
 | 3 — code ready | One backend-only OpenAI integration              | Network access, hosted secret, and a verified live reply               |
 | 4 — code ready | Extract `AIProvider` from the OpenAI integration | Application logic depends on the interface; live path still unverified |
-| 5              | Anthropic, DeepSeek, Kimi adapters               | Same contract works for every configured adapter                       |
+| 5 — code ready | Anthropic, DeepSeek, Kimi adapters               | Same contract in source; keys and live replies still unverified        |
 | 6              | Knowledge Agent with company retrieval           | Accessible current document versions are cited                         |
 | 7              | Risk Agent and Main Agent orchestration          | Uncertain or insufficient evidence causes escalation                   |
 
-We explain decisions before implementing each increment. The additional provider adapters and the agents described below are **not implemented yet**.
+We explain decisions before implementing each increment. The provider adapters below are implemented in source; the Knowledge, Risk, and Main Agent workflow remains future work.
 
 ## Increment 5: additional provider adapters
 
-The common interface and OpenAI adapter already exist. After verifying the live path, add one adapter at a time for Anthropic, DeepSeek, and Kimi. This needs no frontend changes: the API still returns the same `ChatResponse`.
+All four adapters use the same interface and return the same application contract. Changing the selection requires no provider-specific frontend code. The selector reads the shared catalog, while the backend factory selects the adapter and its backend key.
 
-Proposed layout after increment 5:
+Current layout:
 
 ```text
 shared/chat.ts
@@ -151,12 +157,33 @@ server/
     DeepSeekProvider.ts
     KimiProvider.ts
     registry.ts              # simple provider factory
+    request.ts               # shared HTTP/error helpers
+    chatCompletion.ts        # DeepSeek/Kimi prompt and envelope helpers
   chat.ts                    # provider-independent application logic
+  responseSchema.ts          # common message/action output schema
 ```
 
-Each adapter translates these plain types into its provider’s API and validates the result. Native structured-output support varies, so adapters may need JSON parsing plus schema validation. Do not assume APIs, models, streaming formats, or JSON modes are identical. We will check the current official provider documentation when implementing each adapter.
+The approved live selections are:
 
-Each new adapter needs one explicit factory case and an approved live model entry in `shared/catalog.ts`. The backend validates that catalog; no plugin loader or inheritance tree is needed. A missing key makes a provider unavailable with a clear message; it must not silently select another provider.
+| Provider  | Model ID                    | Adapter API                                |
+| --------- | --------------------------- | ------------------------------------------ |
+| OpenAI    | `gpt-4.1-mini`              | Responses                                  |
+| Anthropic | `claude-haiku-4-5-20251001` | Messages                                   |
+| DeepSeek  | `deepseek-flash`            | Chat Completions                           |
+| Kimi      | `kimi-k2.6`                 | Chat Completions, global Moonshot endpoint |
+
+The API formats differ inside the adapters:
+
+- **OpenAI:** `POST https://api.openai.com/v1/responses` with a Bearer key. Structured output uses `text.format` with `type: "json_schema"`, the schema name, and `strict: true`. The adapter accepts a completed response, extracts its output text, and requests `store: false`. [Official structured-output guide](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses)
+- **Anthropic:** `POST https://api.anthropic.com/v1/messages` with `x-api-key` and `anthropic-version: 2023-06-01`. Structured output uses `output_config.format` with `type: "json_schema"`. Claude supports fewer schema constraints, so the adapter removes unsupported bounds from a copy of the API-facing schema, including `maxItems`. It keeps the original parser and all shared application checks. An answer must end with `end_turn`; refusals and incomplete turns are rejected. [Official structured-output guide](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+- **DeepSeek:** `POST https://api.deepseek.com/chat/completions` with a Bearer key, system/user messages, `thinking: { type: "disabled" }`, and `max_tokens: 1200`. Structured generation uses `response_format: { type: "json_object" }`, so the prompt includes our schema and a JSON example. This mode constrains JSON syntax, not our complete application schema; the runtime parser remains necessary. [Official Chat API](https://api-docs.deepseek.com/api/create-chat-completion/), [JSON-output guide](https://api-docs.deepseek.com/guides/json_mode/)
+- **Kimi:** `POST https://api.moonshot.ai/v1/chat/completions` with a Bearer key, `kimi-k2.6`, `thinking: { type: "disabled" }`, and `max_completion_tokens: 1200`. It uses the same JSON-object prompt and runtime validation as DeepSeek. Kimi also supports schema mode, but its documentation warns that K2.6 can behave inconsistently with complex schemas; this adapter uses JSON-object mode without claiming strict API schema enforcement. [Official Chat API](https://platform.kimi.ai/docs/api/chat), [Schema-format guide](https://platform.kimi.ai/docs/guide/response_format)
+
+Claude Haiku 4.5 uses the pinned snapshot ID above and the adapter does not enable extended thinking or set effort. DeepSeek and Kimi explicitly disable thinking for these short responses. The Kimi adapter leaves sampling parameters unset because K2.6 fixes their supported values. [Claude model reference](https://platform.claude.com/docs/en/models/haiku-4-5/overview), [DeepSeek thinking guide](https://api-docs.deepseek.com/guides/thinking_mode/), [Kimi model parameters](https://platform.kimi.ai/docs/api/models-overview)
+
+The Kimi adapter uses the global endpoint and therefore needs a key issued by the corresponding global platform. China-region keys and endpoints are separate. The adapter does not switch regions automatically. [Official Kimi authentication errors](https://platform.kimi.ai/docs/api/errors)
+
+Each added adapter needs one factory case and an approved live model entry in `shared/catalog.ts`. The backend validates that catalog; no plugin loader or inheritance tree is needed. A missing key makes the selected provider unavailable with a clear message.
 
 ## API-key boundary
 
@@ -168,13 +195,15 @@ React frontend
 Backend API (reads server environment only)
       ↓
 AIProvider
-      ↓
-OpenAIProvider (the only live adapter implemented)
+      ├─ OpenAIProvider
+      ├─ AnthropicProvider
+      ├─ DeepSeekProvider
+      └─ KimiProvider
 ```
 
-Only the backend reads keys. `server/dev.ts` loads the local `.env` using Node's environment-file loader and passes `process.env.OPENAI_API_KEY` as `apiKeys.openai`. The hosted Worker would pass its `OPENAI_API_KEY` environment binding through the same configuration. The local `.env` is not deployed. The real `.env` is ignored by Git, while `.env.example` contains names and empty values only.
+Only the backend reads `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, and `KIMI_API_KEY`. `server/dev.ts` loads the local `.env` using Node's environment-file loader and maps those variables into `apiKeys` by provider ID. The hosted Worker would pass its backend environment bindings through the same configuration. The local `.env` is not deployed. The real `.env` is ignored by Git, while `.env.example` contains names and empty values only.
 
-The other provider key names are reserved for later adapters. Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint. A model appearing in the selector does not prove that its backend key is configured. The local OpenAI key was created with a 30-day expiration and is excluded from Git/build archives. Hosted activation needs a secure handoff into Sites' native secret setter, which currently has no file or encrypted-secret input. Live verification still needs working outbound access; demo choices work without a key.
+Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint. A model appearing in the selector does not prove that its backend key is configured. The existing approved local OpenAI key is excluded from Git/build archives. No additional keys were created or configured for increment 5. Hosted secret handoff remains pending, and live verification still needs working outbound access and the selected provider's configured key. Demo choices work without keys.
 
 Before real employee use, the backend will also need employee/manager identity, company-scoped document access, and sensible request limits. The role dropdown is context, not authentication or manager authorization. These are future deployment requirements.
 
@@ -204,4 +233,4 @@ Missing evidence or uncertainty should produce explicit escalation, not invented
 
 ## What is intentionally deferred
 
-Live Anthropic/DeepSeek/Kimi adapters, provider-side streaming, document uploads, RAG, version checking, a Risk Agent, application-level employee authentication, persistent conversations, real manager notifications, and an agent framework. The sample knowledge pages are UI prototypes; live OpenAI does not retrieve their contents.
+Provider-side streaming, document uploads, RAG, version checking, a Risk Agent, application-level employee authentication, persistent conversations, real manager notifications, and an agent framework. The sample knowledge pages are UI prototypes; live providers do not retrieve their contents. Code-ready adapters still require live verification before workplace use.
