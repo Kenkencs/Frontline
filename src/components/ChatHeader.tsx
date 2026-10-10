@@ -46,7 +46,9 @@ export function ChatHeader({
         </label>
       </div>
       <div className="header-right">
-        <span className="prototype-badge">Demo mode</span>
+        <span className="prototype-badge">
+          {models[modelIndex].mode === "demo" ? "Demo mode" : "Live model"}
+        </span>
         <label className="select-wrap model-select">
           <span className="model-symbol">✦</span>
           <select
@@ -55,8 +57,8 @@ export function ChatHeader({
             onChange={(event) => onModel(Number(event.target.value))}
           >
             {models.map((item, index) => (
-              <option key={item.provider} value={index}>
-                {item.label} · {item.company} (demo)
+              <option key={`${item.provider}/${item.model}`} value={index}>
+                {item.label} · {item.company} ({item.mode})
               </option>
             ))}
           </select>

@@ -39,3 +39,20 @@ Completed on 10 October 2026:
 - Source review confirmed new response generation lives only in `server/mockChat.ts`. React calls only `/api/chat`; no provider endpoints, environment reads, or API keys appear in frontend code.
 
 The published Site remains owner-private. Hosting publication and its confirmed URL are recorded in the chat handoff. Browser checks used the existing narrow in-app viewport; a full device/accessibility matrix was not repeated. The backend still returns fixtures, stores no conversation data, and has no live provider/RAG/Risk Agent or manager delivery.
+
+# Increment 3 verification
+
+Checked on 10 October 2026:
+
+- All 30 tests passed. Sixteen new tests use fake OpenAI upstream responses and cover strict request format, live action/message replies, demo isolation, missing keys, invalid selections, refusal, incomplete/malformed output, invented sources, unsupported confidence, high risk without escalation, sanitized provider/network errors, timeout, and Worker secret binding.
+- TypeScript and the production React/Worker build passed. No provider SDK or new runtime dependency was added.
+- The built Worker returns a clear JSON `503` for a live selection without its secret binding.
+- Production frontend assets contain no provider API URL, server environment reads, backend secret variable names, or project-key pattern.
+- The OpenAI Developers secure workflow created the approved key named Codex in the selected project, with a 30-day expiration, and saved it only to the approved local `.env`. Git confirms that `.env` is ignored. No key value was printed or included in a build/package.
+- A live allergy request through the local backend returned a controlled `502`. A redacted direct request confirmed `UND_ERR_CONNECT_TIMEOUT`; an unauthenticated curl connectivity check also timed out. No OpenAI API response was received, so authentication, quota, model access, and an actual generated reply remain unverified.
+- Browser checks confirmed the live GPT option, the company-knowledge limitation notice, loading state, and inline network error with retry. The failed live request did not produce a mock Action Card. The screenshot in the outputs folder records this result.
+- Switching to Claude demo and sending a new opening-shift question produced an ordinary demo reply while the original live failure stayed available for retry.
+
+The current source is increment 3. Hosted live activation remains pending: Sites accepts a plaintext secret value through its native setter, but available tools provide no secure handoff from the approved local env file. No key was transferred to hosting, and the published Site remains on increment 2. Publishing the new Worker should follow hosted secret setup. No frontend-key or plaintext-output workaround was used.
+
+The live response schema and runtime evidence checks were tested against fake upstream responses; a real schema/model compatibility check remains outstanding because of the network timeout. Company retrieval, policy-version verification, a separate Risk Agent, and provider abstraction are still future work.

@@ -31,10 +31,12 @@ export function SourceLinks({
 
 export function ActionCard({
   response,
+  mode,
   onSource,
   onEscalate,
 }: {
   response: ActionResponse;
+  mode: "demo" | "live";
   onSource: (source: Source) => void;
   onEscalate: () => void;
 }) {
@@ -50,7 +52,7 @@ export function ActionCard({
         <span className="risk-note">
           {response.escalate
             ? "Manager escalation recommended"
-            : "Follow the verified procedure"}
+            : "Check the procedure before acting"}
         </span>
       </div>
       <div className="action-card-body">
@@ -69,15 +71,24 @@ export function ActionCard({
         </ol>
         <div className="sources-block">
           <div className="section-eyebrow">
-            SOURCES <span>Sample policies</span>
+            SOURCES {mode === "demo" && <span>Sample policies</span>}
           </div>
           <SourceLinks sources={response.sources} onSource={onSource} />
+          {!response.sources.length && (
+            <p className="source-section">
+              No company sources connected. Verify guidance with your manager.
+            </p>
+          )}
         </div>
       </div>
       <div className="action-card-footer">
         <div
           className="confidence"
-          title="Confidence in this sample procedure. This does not confirm that a food is safe."
+          title={
+            mode === "demo"
+              ? "Confidence in the sample procedure. This does not confirm that a food is safe."
+              : "Company evidence is unavailable. Low confidence is not a safety assessment."
+          }
         >
           <ShieldCheck size={17} />
           <span>

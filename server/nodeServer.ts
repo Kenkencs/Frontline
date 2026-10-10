@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
 import { Readable } from "node:stream";
-import { handleApiRequest, jsonResponse } from "./api";
+import { handleApiRequest, jsonResponse, type ApiOptions } from "./api";
 
-export function createApiServer() {
+export function createApiServer(options: ApiOptions = {}) {
   return createServer(async (incoming, outgoing) => {
     try {
       const headers = new Headers();
@@ -20,7 +20,7 @@ export function createApiServer() {
         new URL(incoming.url ?? "/", "http://127.0.0.1:3001"),
         init,
       );
-      const response = await handleApiRequest(request);
+      const response = await handleApiRequest(request, options);
       // Drain unread input after a size rejection without destroying the response socket.
       incoming.resume();
       outgoing.writeHead(response.status, Object.fromEntries(response.headers));

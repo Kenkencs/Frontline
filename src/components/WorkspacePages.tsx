@@ -135,13 +135,14 @@ export function WorkspacePages({
               >
                 {models.map((item, index) => (
                   <option key={item.model} value={index}>
-                    {item.company} / {item.label} (demo)
+                    {item.company} / {item.label} ({item.mode})
                   </option>
                 ))}
               </select>
               <span>
-                All selections call the backend, which returns demo responses in
-                this increment.
+                GPT-4.1 mini uses live AI when the backend key is configured.
+                Other selections use demo responses. Live AI has no company
+                documents yet.
               </span>
             </label>
             <div className="settings-info">

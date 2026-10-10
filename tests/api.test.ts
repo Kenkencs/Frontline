@@ -38,7 +38,7 @@ function post(value: unknown) {
 }
 
 test("real HTTP produces a sourced high-risk card for every allowed demo pair", async () => {
-  for (const model of models) {
+  for (const model of models.filter((item) => item.mode === "demo")) {
     const response = await post({
       ...input,
       provider: model.provider,

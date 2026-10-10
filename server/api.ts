@@ -4,6 +4,14 @@ import {
   parseChatResponse,
 } from "../shared/validation";
 import { getMockResponse } from "./mockChat";
+import { models } from "../shared/catalog";
+import { generateOpenAIChat, OpenAIChatError } from "./openaiChat";
+
+export interface ApiOptions {
+  openaiApiKey?: string;
+  // Native fetch in production; a fake upstream in tests. No provider framework yet.
+  fetchImpl?: typeof fetch;
+}
 
 export function jsonResponse(
   value: unknown,
@@ -51,7 +59,10 @@ async function readJson(request: Request): Promise<unknown> {
 }
 
 // One portable handler used by the local Node server and the hosted Worker.
-export async function handleApiRequest(request: Request): Promise<Response> {
+export async function handleApiRequest(
+  request: Request,
+  options: ApiOptions = {},
+): Promise<Response> {
   if (new URL(request.url).pathname !== "/api/chat")
     return jsonResponse({ error: "API route not found." }, 404);
   if (request.method !== "POST")
@@ -88,8 +99,22 @@ export async function handleApiRequest(request: Request): Promise<Response> {
   }
 
   try {
-    return jsonResponse(parseChatResponse(getMockResponse(input)));
-  } catch {
+    const selection = models.find(
+      (model) =>
+        model.provider === input.provider && model.model === input.model,
+    )!;
+    const response =
+      selection.mode === "demo"
+        ? getMockResponse(input)
+        : await generateOpenAIChat(
+            input,
+            options.openaiApiKey,
+            options.fetchImpl,
+          );
+    return jsonResponse(parseChatResponse(response));
+  } catch (error) {
+    if (error instanceof OpenAIChatError)
+      return jsonResponse({ error: error.message }, error.status);
     // Do not expose internal errors, keys, or worker questions.
     return jsonResponse(
       { error: "Could not prepare a response. Please retry." },

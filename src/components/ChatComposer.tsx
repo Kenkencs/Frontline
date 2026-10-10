@@ -10,9 +10,11 @@ const suggestions = [
 export function ChatComposer({
   sending,
   onSend,
+  mode,
 }: {
   sending: boolean;
   onSend: (message: string) => Promise<void>;
+  mode: "demo" | "live";
 }) {
   const [text, setText] = useState("");
   const input = useRef<HTMLTextAreaElement>(null);
@@ -92,7 +94,9 @@ export function ChatComposer({
         </div>
       </form>
       <p className="composer-footnote">
-        Backend demo · Sample policies · No live AI connected
+        {mode === "demo"
+          ? "Backend demo · Fictional sample policies"
+          : "AI guidance · Company policies not connected · Verify with your manager"}
       </p>
     </div>
   );

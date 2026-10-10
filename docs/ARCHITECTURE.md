@@ -8,27 +8,30 @@ React components
 sendChat(ChatRequest)
        ↓ POST /api/chat
 Backend validates input
-       ↓
-getMockResponse(request)
+       ↓ checks the approved model selection
+       ├─ Demo model → getMockResponse(request)
+       └─ Live GPT  → generateOpenAIChat(request)
        ↓
 Validated ChatResponse → ordinary message or Action Card
 ```
 
 `shared/chat.ts` defines the contract once. `type` tells React whether to render a plain message or an Action Card. Sources carry an ID, title, version, section, and excerpt. `shared/validation.ts` checks incoming JSON at runtime; TypeScript alone cannot validate an HTTP response.
 
-All demo provider/model pairs are listed in `shared/catalog.ts`. The backend rejects unknown or mismatched selections instead of trusting arbitrary IDs. `shared/demoResponses.ts` contains static examples for initial history; new sends always go over HTTP. The frontend contains no response generator.
+`shared/catalog.ts` lists four demo provider/model pairs and one live OpenAI model, `gpt-4.1-mini`. Each entry has a `mode` of `demo` or `live`. The backend rejects unknown or mismatched selections instead of trusting arbitrary IDs. Demo IDs always use fixtures, even when a backend key exists; selecting live GPT never silently falls back to a demo or another provider.
+
+`shared/demoResponses.ts` contains static examples for initial history; new sends always go over HTTP. The frontend contains no response generator. Increment 3's code is implemented and a key was securely saved to the approved local `.env`. A real OpenAI reply is still unverified: outbound requests time out before receiving an API response. Hosted key setup is also pending, so the published Site remains on increment 2.
 
 ## Increment 2: one handler, two thin adapters
 
 ```text
 Local:  React / Vite → /api proxy → Node HTTP adapter ┐
-                                                     ├→ handleApiRequest → backend mock
+                                                     ├→ handleApiRequest
 Hosted: React assets → /api/chat → Worker adapter    ┘
 ```
 
 The two adapters are necessary because local development uses Node while the existing hosted site runs Cloudflare Workers. They share `server/api.ts`; neither contains workplace or provider logic. This preserves the React UI without introducing a new framework.
 
-- `server/api.ts` accepts `POST /api/chat`, reads up to 32 KiB, validates fields, calls the backend mock, validates the reply, and returns JSON with `Cache-Control: no-store`.
+- `server/api.ts` accepts `POST /api/chat`, reads up to 32 KiB, validates fields, selects the demo or live path, validates the reply, and returns JSON with `Cache-Control: no-store`.
 - `server/nodeServer.ts` converts Node HTTP requests/responses to the Fetch API used by the handler. `server/dev.ts` binds it to loopback port 3001.
 - `server/worker.ts` sends API routes to the same handler and other requests to the frontend assets binding. Private access remains enforced by Sites.
 - `vite.config.ts` proxies `/api` during development and preview. The browser calls only its own origin, so no broad CORS setup is needed.
@@ -46,27 +49,54 @@ The request stays simple:
 }
 ```
 
-The backend checks nonblank messages of at most 4,000 characters, employee role, and the approved provider/model pair. It reconstructs known fields and ignores arbitrary extra properties. Errors use `{ "error": "message" }` with `400`, `413`, `415`, `405`, `404`, or a sanitized `500`. Worker questions and internal errors are not logged or returned.
+The backend checks nonblank messages of at most 4,000 characters, employee role, and the approved provider/model pair. It reconstructs known fields and ignores arbitrary extra properties. Input, body, method, and route errors use `{ "error": "message" }` with an appropriate HTTP status. Internal errors use a sanitized `500`. Worker questions and internal errors are not logged or returned.
 
 Responses remain the existing `ChatResponse`. Changing the backend implementation will not require rewriting the cards. Conversation history and drafts live only in React memory; the API receives one question and has no conversational memory. Add bounded history or a conversation ID deliberately when implementing follow-ups.
 
+## Increment 3: one OpenAI call on the backend
+
+```text
+POST /api/chat with provider: "openai", model: "gpt-4.1-mini"
+       ↓
+server/api.ts validates the request and selects the live path
+       ↓
+server/openaiChat.ts → native fetch → OpenAI Responses API
+       ↓
+{ response: message | action } from a strict JSON schema
+       ↓ unwrap, validate, check evidence rules
+The same ChatResponse used by the demo → React
+```
+
+Two small files contain the new behavior:
+
+- `server/openaiChat.ts` makes one non-streamed request with native `fetch`. It sends the employee role, current question, instructions, and output schema. It requests `store: false` and limits output to 1,200 tokens. There is no SDK, provider registry, or agent framework yet.
+- `server/responseSchema.ts` describes the two possible response shapes. The schema has an object at its root, with the message/action union nested under `response`. The server unwraps that envelope before returning the existing `ChatResponse`, so the frontend contract does not change.
+
+The API handler receives the key through a small options object. Tests can also pass a fake `fetch` implementation to check the upstream request and failure handling without a real API call. This is a test seam, not the future `AIProvider` abstraction.
+
+The live path has no company documents or product records. Its schema and runtime checks require empty `sources` and low confidence for Action Cards. The demo cards still show clearly labeled fictional sample policies. Live GPT must not copy those sample citations or claim a policy was checked.
+
+The prompt asks for conservative guidance, including escalation for severe allergies and possible harm. The backend also rejects an Action Card marked high risk without escalation. These checks do not prove that every situation was classified correctly. Prompt instructions are not a Risk Agent; evidence retrieval and a separate risk evaluation remain later increments.
+
+The upstream call has a 15-second abort timeout, inside the frontend's 20-second request timeout. Missing keys or authentication failures return `503`; usage limits return `429`; model refusals return `422`; timeouts return `504`; incomplete, malformed, or unusable upstream results return `502`. The backend returns its own brief error messages and never forwards raw provider errors, headers, or keys. The UI retains the original question for retry.
+
 ## The sequence we will follow
 
-| Increment    | Change                                            | Small success check                                  |
-| ------------ | ------------------------------------------------- | ---------------------------------------------------- |
-| 1 — complete | React, mock responses, Action Card                | Allergy example and sample sources render            |
-| 2 — complete | Common HTTP endpoint; backend mock                | UI receives the same card over HTTP                  |
-| 3            | One backend-only OpenAI integration               | Validated live reply renders in the same UI          |
-| 4            | Extract `AIProvider` from the working integration | Application logic depends on the interface           |
-| 5            | Anthropic, DeepSeek, Kimi adapters                | Same contract works for every configured adapter     |
-| 6            | Knowledge Agent with company retrieval            | Accessible current document versions are cited       |
-| 7            | Risk Agent and Main Agent orchestration           | Uncertain or insufficient evidence causes escalation |
+| Increment      | Change                                            | Small success check                                      |
+| -------------- | ------------------------------------------------- | -------------------------------------------------------- |
+| 1 — complete   | React, mock responses, Action Card                | Allergy example and sample sources render                |
+| 2 — complete   | Common HTTP endpoint; backend mock                | UI receives the same card over HTTP                      |
+| 3 — code ready | One backend-only OpenAI integration               | Network access, hosted secret, and a verified live reply |
+| 4              | Extract `AIProvider` from the working integration | Application logic depends on the interface               |
+| 5              | Anthropic, DeepSeek, Kimi adapters                | Same contract works for every configured adapter         |
+| 6              | Knowledge Agent with company retrieval            | Accessible current document versions are cited           |
+| 7              | Risk Agent and Main Agent orchestration           | Uncertain or insufficient evidence causes escalation     |
 
 We explain decisions before implementing each increment. The following sections describe future modules; they are **not implemented yet**.
 
-## Increments 3–5: replaceable providers
+## Increments 4–5: replaceable providers
 
-First make one provider work on the backend. Then extract the common interface from that working code. This avoids designing abstractions around untested assumptions.
+After validating the one-provider integration, extract its common interface. This avoids designing abstractions around untested assumptions.
 
 Proposed layout after increment 5:
 
@@ -74,7 +104,7 @@ Proposed layout after increment 5:
 shared/chat.ts
 src/                         # React only
 server/
-  app.ts                     # POST /api/chat, request validation
+  api.ts                     # POST /api/chat, request validation
   providers/
     AIProvider.ts            # common interface
     OpenAIProvider.ts
@@ -116,6 +146,8 @@ Streaming can wait until the non-streamed flow works. Never stream an unfinished
 
 ## API-key boundary
 
+The intended boundary after extracting the provider interface is:
+
 ```text
 React frontend
       ↓
@@ -128,9 +160,11 @@ AIProvider
       └─ KimiProvider
 ```
 
-Only the backend will read `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, and `KIMI_API_KEY`. The current `.env.example` reserves those names; increment 2 needs none. Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint.
+Only the backend reads keys. In increment 3, `server/dev.ts` loads a local `.env` using Node's environment-file loader and passes `process.env.OPENAI_API_KEY` to the handler. The hosted Worker receives `OPENAI_API_KEY` through its backend environment binding; the local `.env` is not deployed. The real `.env` is ignored by Git, while `.env.example` contains names and empty values only.
 
-Before real employee use, the backend will also need employee/manager identity, company-scoped document access, and sensible request limits. The role dropdown is context, not authentication or manager authorization. These are future deployment requirements, not additional increment-2 features.
+The other provider key names are reserved for later adapters. Never prefix secrets with `VITE_`, put them in React, log them, or return them through an endpoint. A model appearing in the selector does not prove that its backend key is configured. The local OpenAI key was created with a 30-day expiration and is excluded from Git/build archives. Hosted activation needs a secure handoff into Sites' native secret setter, which currently has no file or encrypted-secret input. Live verification still needs working outbound access; demo choices work without a key.
+
+Before real employee use, the backend will also need employee/manager identity, company-scoped document access, and sensible request limits. The role dropdown is context, not authentication or manager authorization. These are future deployment requirements.
 
 ## Increments 6–7: exactly 1 + 2 agents
 
@@ -158,4 +192,4 @@ Missing evidence or uncertainty should produce explicit escalation, not invented
 
 ## What is intentionally deferred
 
-Live provider implementations, provider-side streaming, document uploads, RAG, version checking, real risk evaluation, application-level employee authentication, persistent conversations, real manager notifications, and an agent framework. The demo model selector and sample knowledge pages are UI prototypes, not evidence that these capabilities exist.
+The common provider interface, live Anthropic/DeepSeek/Kimi adapters, provider-side streaming, document uploads, RAG, version checking, a Risk Agent, application-level employee authentication, persistent conversations, real manager notifications, and an agent framework. The sample knowledge pages are UI prototypes; live OpenAI does not retrieve their contents.

@@ -1,6 +1,6 @@
 # Frontline Workplace Knowledge Agent
 
-This is **increment 2: React → backend API → mock response → Action Card**. A real `POST /api/chat` endpoint now runs locally and on the private hosted site. Responses still use fictional fixtures; live AI, retrieval, and risk evaluation come in later increments.
+This is **increment 3: React → backend API → one OpenAI integration → Action Card**. The code now supports a live GPT-4.1 mini selection through the same `POST /api/chat` endpoint. Four clearly labeled demo selections still use fixtures. The live integration is ready for verification, but the current machine cannot reach OpenAI and hosted live activation is pending. Retrieval and specialist agents remain later increments.
 
 ## Run it
 
@@ -25,24 +25,29 @@ The preview command also starts both processes; open its printed URL (normally p
 
 - Start a new conversation and send “A customer has a food allergy” for a high-risk Action Card.
 - Send “Opening shift checklist” for an ordinary message or “Handling a customer complaint” for a medium-risk card.
-- Choose GPT, Claude, DeepSeek, or Kimi. All selections are labeled demos and reach the same backend mock service.
+- Choose GPT, Claude, DeepSeek, or Kimi **demo** to receive backend fixtures without an API key or provider charge.
+- Choose **GPT-4.1 mini (live)** for the backend OpenAI path. It requires a server-side key and outbound access to OpenAI. Errors stay visible; the app never substitutes a demo answer for a failed live request.
+- Live Action Cards have low confidence and no company sources until retrieval is connected. **View Source** is disabled when sources are unavailable.
 - Open a source to read its fictional excerpt.
 - Use **Ask Manager** to edit/copy an escalation note or save a session draft to Manager Dashboard. Nothing is sent.
 - If a request fails, **Retry request** resends the original role, model, and question without duplicating the worker message. Each chat keeps its own loading/error state.
 - Conversations and drafts stay in React memory. Reloading resets them. The backend stores nothing, and only the current question is sent; visible history is not model memory.
 
-Keyword matching demonstrates rendering. It does not assess real operational risk, interpret follow-up context, verify food safety, or check company policy versions. “High confidence” describes the sample procedure, never whether a food is safe. All SOPs are fictional.
+Demo keyword matching demonstrates rendering. Live GPT uses a conservative prompt and strict JSON output, but neither path verifies food safety or current company policy versions. “High confidence” on sample cards describes the fictional procedure, never whether a food is safe. A dedicated Knowledge Agent and Risk Agent are not implemented yet.
 
 ## Read the code in this order
 
 1. `shared/chat.ts`: common request/response types.
 2. `src/services/chatClient.ts`: the frontend’s only chat transport, using `fetch('/api/chat')`.
 3. `server/api.ts`: validates HTTP input and returns the standard response or a JSON error.
-4. `server/mockChat.ts`: demo behavior; replace this call with one live provider in increment 3.
-5. `shared/validation.ts`: checks incoming JSON at runtime, on both sides.
-6. `src/components/ActionCard.tsx`: renders an action response without knowing its provider.
-7. `server/nodeServer.ts` and `server/worker.ts`: small adapters for local development and private hosting.
-8. `src/App.tsx`: coordinates conversations, role, model, and dialogs.
+4. `shared/catalog.ts`: approved provider/model selections and their live/demo mode.
+5. `server/openaiChat.ts`: one OpenAI Responses request, error handling, and evidence checks.
+6. `server/responseSchema.ts`: strict message/action schema, nested in a root object and unwrapped on the backend.
+7. `server/mockChat.ts`: demo behavior, kept separate from the live path.
+8. `shared/validation.ts`: checks incoming JSON at runtime, on both sides.
+9. `src/components/ActionCard.tsx`: renders an action response without knowing its provider.
+10. `server/nodeServer.ts` and `server/worker.ts`: small local/hosted adapters.
+11. `src/App.tsx`: coordinates conversations, role, model, and dialogs.
 
 There is no application router, database, state-management library, agent framework, or provider SDK. Node’s native HTTP server is sufficient here. `tsx` runs the TypeScript backend and Node’s built-in test runner. Read `docs/ARCHITECTURE.md` for the current flow and the remaining increments.
 
@@ -54,12 +59,16 @@ curl http://127.0.0.1:3001/api/chat \
   -d '{"message":"Customer has a peanut allergy","employee_role":"waiter","provider":"openai","model":"demo-gpt"}'
 ```
 
-Accepted demo pairs are in `shared/catalog.ts`. Invalid fields return `400`, oversized bodies `413`, non-JSON content `415`, wrong methods `405`, and unknown API routes `404`. Errors use `{ "error": "message" }`; successful replies keep the common message/action contract. There is no local mock fallback if the API fails.
+Accepted demo and live pairs are in `shared/catalog.ts`. Use `"model":"gpt-4.1-mini"` with `"provider":"openai"` for the live path. Invalid fields return `400`, oversized bodies `413`, non-JSON content `415`, wrong methods `405`, and unknown routes `404`. Live errors use `503` for missing/authentication configuration, `429` for API usage limits, `422` for refusal, `504` for timeout, and `502` for unusable output or network failure. Errors use `{ "error": "message" }`; successful replies keep the common contract.
 
 ## API keys and hosting
 
-No keys are needed or read in increment 2. `.env.example` reserves the future backend variable names. `.env` and `.env.*` are ignored except `.env.example`. Never put keys in React, frontend settings, the catalog, hosting metadata, or `VITE_` variables.
+Live GPT reads `OPENAI_API_KEY` only on the backend. The local Node server loads `.env`; `.env.example` contains empty variable names. `.env` and `.env.*` are ignored except `.env.example`. Demo selections need no keys. The other provider variables are reserved for increment 5. Never put keys in React, frontend settings, the catalog, hosting metadata, or `VITE_` variables.
 
-The existing private Sites deployment now uses a Cloudflare Worker for `/api/chat` plus the React static assets. Its access audience is preserved. `scripts/prepare-hosting.mjs` writes non-secret build configuration; `server/worker.ts` delegates assets through the [Cloudflare assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). Hosted secrets will be configured through the hosting platform, not committed environment files.
+OpenAI Developers securely created a project key and saved it to the approved local `.env`, with a 30-day expiration. No key value appears in this source or downloadable package. Replace the key before its expiration when continuing development; the application does not rotate keys automatically.
+
+The existing private Sites deployment uses a Cloudflare Worker plus the React static assets. Its access audience is preserved. `scripts/prepare-hosting.mjs` writes non-secret build configuration; `server/worker.ts` delegates assets through the [Cloudflare assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). The Worker expects `OPENAI_API_KEY` as a hosted runtime secret; local `.env` is never deployed. Current tooling has no secure file-to-Sites-secret handoff, so the hosted site remains on increment 2 pending that setup. The local source/build contains increment 3.
+
+The OpenAI call uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) supports this format. The schema helps enforce shape; runtime validation also rejects invented citations, unsupported confidence, and high risk without escalation. These checks are not a complete safety evaluator.
 
 The role selector is context, not authentication or permission to act as a manager. Company-specific access and real manager delivery remain future work. See `docs/VERIFICATION.md` for completed checks and limitations.

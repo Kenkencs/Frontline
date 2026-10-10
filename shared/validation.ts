@@ -22,7 +22,7 @@ export function parseChatRequest(value: unknown): ChatRequest {
     (item) => item.provider === value.provider && item.model === value.model,
   );
   if (!model)
-    throw new Error("Choose a supported provider and demo model pair.");
+    throw new Error("Choose a supported provider and model pair.");
   // Reconstruct known fields; do not forward arbitrary client properties.
   return {
     message: value.message.trim(),

@@ -25,6 +25,15 @@ interface FailedRequest {
   message: string;
 }
 
+function responseMode(request: ChatRequest) {
+  return (
+    models.find(
+      (item) =>
+        item.provider === request.provider && item.model === request.model,
+    )?.mode ?? "demo"
+  );
+}
+
 const initialConversations: Conversation[] = [
   {
     id: "allergy-example",
@@ -198,7 +207,7 @@ export default function App() {
 
   const openEscalation = (response: ActionResponse, request: ChatRequest) => {
     setDraftText(
-      `Manager assistance requested\n\nRole: ${roles.find((item) => item.id === request.employee_role)?.label}\nSituation: ${response.summary}\nRisk: ${response.risk.toUpperCase()}\n\nWorker’s question: ${request.message}\n\nRecommended actions:\n${response.actions.map((action, index) => `${index + 1}. ${action}`).join("\n")}\n\nSources (sample policies): ${response.sources.map((item) => `${item.title} ${item.version} ${item.section}`).join(", ")}`,
+      `Manager assistance requested\n\nRole: ${roles.find((item) => item.id === request.employee_role)?.label}\nSituation: ${response.summary}\nRisk: ${response.risk.toUpperCase()}\n\nWorker’s question: ${request.message}\n\nRecommended actions:\n${response.actions.map((action, index) => `${index + 1}. ${action}`).join("\n")}\n\nSources: ${response.sources.length ? response.sources.map((item) => `${item.title} ${item.version} ${item.section} (sample policy)`).join(", ") : "No company sources connected; guidance requires verification."}`,
     );
   };
 
@@ -266,7 +275,12 @@ export default function App() {
                             <div className="assistant-byline">
                               <Brand small />
                               <strong>Frontline</strong>
-                              <span>{message.modelLabel} · Demo response</span>
+                              <span>
+                                {message.modelLabel} ·{" "}
+                                {responseMode(message.request) === "live"
+                                  ? "AI response"
+                                  : "Demo response"}
+                              </span>
                             </div>
                             {message.response.type === "action" ? (
                               <>
@@ -275,6 +289,7 @@ export default function App() {
                                 </p>
                                 <ActionCard
                                   response={message.response}
+                                  mode={responseMode(message.request)}
                                   onSource={setSource}
                                   onEscalate={() =>
                                     openEscalation(
@@ -325,6 +340,7 @@ export default function App() {
             <ChatComposer
               key={activeId}
               sending={sending}
+              mode={model.mode}
               onSend={submitMessage}
             />
           </>
