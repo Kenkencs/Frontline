@@ -207,7 +207,7 @@ export default function App() {
 
   const openEscalation = (response: ActionResponse, request: ChatRequest) => {
     setDraftText(
-      `Manager assistance requested\n\nRole: ${roles.find((item) => item.id === request.employee_role)?.label}\nSituation: ${response.summary}\nRisk: ${response.risk.toUpperCase()}\n\nWorker’s question: ${request.message}\n\nRecommended actions:\n${response.actions.map((action, index) => `${index + 1}. ${action}`).join("\n")}\n\nSources: ${response.sources.length ? response.sources.map((item) => `${item.title} ${item.version} ${item.section} (sample policy)`).join(", ") : "No company sources connected; guidance requires verification."}`,
+      `Manager assistance requested\n\nRole: ${roles.find((item) => item.id === request.employee_role)?.label}\nSituation: ${response.summary}\nRisk: ${response.risk.toUpperCase()}\n\nWorker’s question: ${request.message}\n\nRecommended actions:\n${response.actions.map((action, index) => `${index + 1}. ${action}`).join("\n")}\n\nSources: ${response.sources.length ? response.sources.map((item) => `${item.title} ${item.version} ${item.section} (${item.sample === false ? "company" : "sample"} policy)`).join(", ") : "No relevant current sources retrieved; guidance requires verification."}`,
     );
   };
 

@@ -5,7 +5,6 @@ import { AnthropicProvider } from "../server/providers/AnthropicProvider";
 import { DeepSeekProvider } from "../server/providers/DeepSeekProvider";
 import { KimiProvider } from "../server/providers/KimiProvider";
 import {
-  ProviderError,
   type OutputSchema,
   type ProviderInput,
 } from "../server/providers/AIProvider";
@@ -144,20 +143,12 @@ async function assertError(
   return value.error as string;
 }
 
-function controlledError(status: number) {
-  return (error: unknown): boolean => {
-    assert.ok(error instanceof ProviderError);
-    assert.equal(error.status, status);
-    assertSanitized(error.message);
-    return true;
-  };
-}
-
 test("each new provider route uses its own key and transport with the same chat contract", async () => {
   for (const adapter of adapters) {
     const input = inputFor(adapter.id);
     let calls = 0;
     let nextReply: ChatResponse = action;
+    let currentMessage = input.message;
     const fakeFetch: typeof fetch = async (url, init) => {
       calls += 1;
       assert.equal(url, adapter.url);
@@ -210,22 +201,75 @@ test("each new provider route uses its own key and transport with the same chat 
           adapter.id === "kimi" ? "max_tokens" : "max_completion_tokens";
         assert.ok(!(unusedTokenField in body));
       }
-      assert.deepEqual(JSON.parse(body.messages.at(-1).content), {
-        employee_role: input.employee_role,
-        message: input.message,
+      const prompt = JSON.parse(body.messages.at(-1).content);
+      assert.deepEqual(Object.keys(prompt).sort(), [
+        "employee_role",
+        "knowledge",
+        "message",
+        "risk_assessment",
+      ]);
+      assert.equal(prompt.employee_role, input.employee_role);
+      assert.equal(prompt.message, currentMessage);
+      assert.deepEqual(prompt.knowledge, {
+        mode: "none",
+        missing: true,
+        sources: [],
       });
+      assert.equal(
+        prompt.risk_assessment.risk,
+        nextReply.type === "action" ? "high" : "low",
+      );
+      assert.equal(
+        prompt.risk_assessment.requiresAction,
+        nextReply.type === "action",
+      );
       return completion(adapter.id, nextReply);
     };
     const config = {
       apiKeys: { ...KEYS, [adapter.id]: ` ${KEYS[adapter.id]} ` },
       fetchImpl: fakeFetch,
+      documents: [],
     };
     assert.ok(createProvider(adapter.id, config) instanceof adapter.Provider);
     for (const reply of [action, message]) {
       nextReply = reply;
-      const response = await handleApiRequest(request(input), config);
+      currentMessage =
+        reply.type === "message"
+          ? "Where is the opening checklist?"
+          : input.message;
+      const response = await handleApiRequest(
+        request({ ...input, message: currentMessage }),
+        config,
+      );
       assert.equal(response.status, 200);
-      assert.deepEqual(parseChatResponse(await response.json()), reply);
+      const result = parseChatResponse(await response.json());
+      assert.equal(result.type, reply.type);
+      assert.deepEqual(result.sources, []);
+      if (result.type === "action") {
+        assert.equal(result.risk, "high");
+        assert.equal(result.escalate, true);
+        assert.equal(result.confidence, "low");
+        assert.match(result.summary, /Possible allergy case/);
+        assert.ok(
+          result.actions.includes("Do not confirm that the food is safe."),
+        );
+        assert.ok(
+          result.actions.includes("Check the latest allergen information."),
+        );
+        assert.ok(
+          result.actions.includes("Check cross-contamination information."),
+        );
+      } else {
+        assert.ok(
+          result.content.startsWith(
+            "I could not find a current policy for this question.",
+          ),
+        );
+        assert.match(
+          result.content,
+          /manager.*current relevant company policy/,
+        );
+      }
     }
     assert.equal(calls, 2);
   }
@@ -241,6 +285,7 @@ test("missing provider keys never fall back to another configured provider and d
     for (const missing of [undefined, "", "   "]) {
       const response = await handleApiRequest(request(inputFor(provider)), {
         apiKeys: { ...KEYS, [provider]: missing },
+        documents: [],
         fetchImpl: fakeFetch,
       });
       assert.match(await assertError(response, 503), /not configured/);
@@ -252,6 +297,7 @@ test("missing provider keys never fall back to another configured provider and d
         request({ ...inputFor(model.provider), model: model.model }),
         {
           apiKeys,
+          documents: [],
           fetchImpl: fakeFetch,
         },
       );
@@ -366,6 +412,7 @@ test("new providers reject incomplete, refused, malformed and ambiguous upstream
     for (const item of cases) {
       const response = await handleApiRequest(request(inputFor(adapter.id)), {
         apiKeys: KEYS,
+        documents: [],
         fetchImpl: async () => Response.json(item.value),
       });
       await assertError(response, item.status);
@@ -398,6 +445,7 @@ test("all new live routes enforce JSON, action bounds and company-evidence guard
       await assertError(
         await handleApiRequest(request(inputFor(adapter.id)), {
           apiKeys: KEYS,
+          documents: [],
           fetchImpl: async () => completion(adapter.id, reply),
         }),
         502,
@@ -407,6 +455,7 @@ test("all new live routes enforce JSON, action bounds and company-evidence guard
       await assertError(
         await handleApiRequest(request(inputFor(adapter.id)), {
           apiKeys: KEYS,
+          documents: [],
           fetchImpl: async () => Response.json(textEnvelope(adapter.id, text)),
         }),
         502,
@@ -426,6 +475,7 @@ test("provider transport errors are sanitized with common statuses", async () =>
       await assertError(
         await handleApiRequest(request(inputFor(adapter.id)), {
           apiKeys: KEYS,
+          documents: [],
           fetchImpl: async () =>
             new Response(`${PRIVATE_DETAIL}: ${KEYS[adapter.id]}`, {
               status: upstreamStatus,
@@ -443,6 +493,7 @@ test("provider transport errors are sanitized with common statuses", async () =>
       await assertError(
         await handleApiRequest(request(inputFor(adapter.id)), {
           apiKeys: KEYS,
+          documents: [],
           fetchImpl: fakeFetch,
         }),
         502,
@@ -452,6 +503,7 @@ test("provider transport errors are sanitized with common statuses", async () =>
   await assertError(
     await handleApiRequest(request(inputFor("kimi")), {
       apiKeys: KEYS,
+      documents: [],
       fetchImpl: async () =>
         Response.json(
           { error: { type: "content_filter", message: PRIVATE_DETAIL } },
@@ -483,6 +535,7 @@ test("all new providers abort after the same 15-second timeout", async (t) => {
     };
     const pending = handleApiRequest(request(inputFor(adapter.id)), {
       apiKeys: KEYS,
+      documents: [],
       fetchImpl: fakeFetch,
     });
     await fetching;
@@ -494,7 +547,7 @@ test("all new providers abort after the same 15-second timeout", async (t) => {
   }
 });
 
-test("new adapters support plain generation and structured parsers while streaming remains deferred", async () => {
+test("new adapters support plain generation and supplied structured parsers", async () => {
   const schema: OutputSchema<string> = {
     name: "answer",
     jsonSchema: {
@@ -541,11 +594,6 @@ test("new adapters support plain generation and structured parsers while streami
       await provider.structuredGenerate(input, schema),
       "ASK THE MANAGER",
     );
-    const chunks: string[] = [];
-    await assert.rejects(async () => {
-      for await (const chunk of provider.stream(input)) chunks.push(chunk);
-    }, controlledError(501));
-    assert.deepEqual(chunks, []);
     assert.equal(calls, 2);
   }
 });
@@ -657,9 +705,28 @@ test("Worker passes each new backend binding to its provider without serving ass
   };
   for (const adapter of adapters) {
     current = adapter;
-    const response = await worker.fetch(request(inputFor(adapter.id)), env);
+    const response = await worker.fetch(
+      request({
+        ...inputFor(adapter.id),
+        message: "Where is the opening checklist?",
+      }),
+      env,
+    );
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), message);
+    const reply = parseChatResponse(await response.json());
+    assert.ok(reply.type === "message");
+    assert.ok(reply.content.startsWith("Relevant procedure:"));
+    assert.match(reply.content, /Read the handover/);
+    assert.match(
+      reply.content,
+      /manager.*current company policy.*fictional samples/,
+    );
+    assert.equal(reply.sources.length, 1);
+    const source = reply.sources[0];
+    assert.equal(source.id, "opening-checklist:1:opening");
+    assert.equal(source.version, "v1");
+    assert.equal(source.sample, true);
+    assert.ok(reply.content.includes(source.excerpt));
   }
   assert.equal(calls, adapters.length);
   assert.equal(assets, 0);

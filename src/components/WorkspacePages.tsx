@@ -1,7 +1,7 @@
-import { BookOpen, FileText, MessageSquare, UserRound } from "lucide-react";
+import { FileText, MessageSquare, UserRound } from "lucide-react";
 import type { EmployeeRole, Source } from "../../shared/chat";
 import type { EscalationDraft, View } from "../types";
-import { samplePolicies } from "../data/samplePolicies";
+import { KnowledgePage } from "./KnowledgePage";
 import { models, roles } from "../data/models";
 
 interface Props {
@@ -30,35 +30,7 @@ export function WorkspacePages({
   return (
     <div className="secondary-page">
       {view === "knowledge" && (
-        <>
-          <div className="page-eyebrow">
-            <BookOpen size={18} /> WORKSPACE KNOWLEDGE
-          </div>
-          <h1>Knowledge Base</h1>
-          <p className="page-description">
-            Explore the sample policies behind the demo responses.
-          </p>
-          <div className="information-note">
-            These are fictional policy excerpts. Company documents and version
-            checks will be connected in the Knowledge Agent increment.
-          </div>
-          <div className="policy-list">
-            {samplePolicies.map((policy) => (
-              <button key={policy.id} onClick={() => onSource(policy)}>
-                <span className="policy-icon">
-                  <FileText size={22} />
-                </span>
-                <span>
-                  <strong>{policy.title}</strong>
-                  <span>
-                    {policy.version} · {policy.section} · Sample document
-                  </span>
-                </span>
-                <BookOpen size={17} />
-              </button>
-            ))}
-          </div>
-        </>
+        <KnowledgePage role={role} onSource={onSource} />
       )}
       {view === "manager" && (
         <>
@@ -141,8 +113,9 @@ export function WorkspacePages({
               </select>
               <span>
                 Live models use the selected provider when its backend key is
-                configured. Demo selections use sample responses. Live AI has no
-                company documents yet.
+                configured. Demo selections use local guidance without paid AI.
+                All selections use the current knowledge catalog and risk
+                checks.
               </span>
             </label>
             <div className="settings-info">

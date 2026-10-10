@@ -30,7 +30,7 @@ const action: ActionResponse = {
   confidence: "low",
   escalate: true,
 };
-const message: ChatResponse = {
+const message: Extract<ChatResponse, { type: "message" }> = {
   type: "message",
   content: "Ask your manager where the current shift checklist is kept.",
   sources: [],
@@ -63,7 +63,50 @@ function completion(reply: unknown): Response {
 }
 
 function options(fetchImpl: typeof fetch): ApiOptions {
-  return { apiKeys: { openai: TEST_KEY }, fetchImpl };
+  return { apiKeys: { openai: TEST_KEY }, fetchImpl, documents: [] };
+}
+
+function assertGuardedAction(reply: ChatResponse): void {
+  assert.ok(reply.type === "action");
+  assert.equal(reply.risk, "high");
+  assert.equal(reply.confidence, "low");
+  assert.equal(reply.escalate, true);
+  assert.deepEqual(reply.sources, []);
+  assert.match(reply.summary, /Possible allergy case/);
+  assert.ok(reply.actions.includes("Do not confirm that the food is safe."));
+  assert.ok(reply.actions.includes("Check the latest allergen information."));
+  assert.ok(reply.actions.includes("Check cross-contamination information."));
+  assert.ok(
+    reply.actions.some((step) =>
+      /manager.*safety cannot be verified/.test(step),
+    ),
+  );
+}
+
+function assertOrdinaryReply(
+  reply: ChatResponse,
+  evidence: "missing" | "sample" = "missing",
+): void {
+  assert.ok(reply.type === "message");
+  if (evidence === "sample") {
+    assert.ok(reply.content.startsWith("Relevant procedure:"));
+    assert.match(reply.content, /Read the handover/);
+    assert.match(reply.content, /fictional samples/);
+    assert.equal(reply.sources.length, 1);
+    const source = reply.sources[0];
+    assert.equal(source.id, "opening-checklist:1:opening");
+    assert.equal(source.version, "v1");
+    assert.equal(source.sample, true);
+    assert.ok(reply.content.includes(source.excerpt));
+  } else {
+    assert.ok(
+      reply.content.startsWith(
+        "I could not find a current policy for this question.",
+      ),
+    );
+    assert.deepEqual(reply.sources, []);
+  }
+  assert.match(reply.content, /manager.*company policy/);
 }
 
 async function assertError(
@@ -122,10 +165,23 @@ test("live /api/chat sends a strict Responses request and returns the action con
     assert.equal(body.store, false);
     assert.ok(body.max_output_tokens > 0 && body.max_output_tokens <= 1200);
     assert.equal(typeof body.instructions, "string");
-    assert.deepEqual(JSON.parse(body.input), {
-      employee_role: input.employee_role,
-      message: input.message,
+    const prompt = JSON.parse(body.input);
+    assert.deepEqual(Object.keys(prompt).sort(), [
+      "employee_role",
+      "knowledge",
+      "message",
+      "risk_assessment",
+    ]);
+    assert.equal(prompt.employee_role, input.employee_role);
+    assert.equal(prompt.message, input.message);
+    assert.deepEqual(prompt.knowledge, {
+      mode: "none",
+      missing: true,
+      sources: [],
     });
+    assert.equal(prompt.risk_assessment.risk, "high");
+    assert.equal(prompt.risk_assessment.escalate, true);
+    assert.equal(prompt.risk_assessment.requiresAction, true);
     assert.ok(!(init?.body as string).includes(TEST_KEY));
     assert.ok(!body.input.includes("client-injected"));
     assert.equal(body.text.format.type, "json_schema");
@@ -137,9 +193,9 @@ test("live /api/chat sends a strict Responses request and returns the action con
     assert.equal(schema.properties.response.anyOf.length, 2);
     assertStrictObjects(schema);
     for (const branch of schema.properties.response.anyOf) {
-      assert.equal(branch.properties.sources.maxItems, 0);
+      assert.equal(branch.properties.sources.maxItems, 4);
       if (branch.properties.confidence)
-        assert.deepEqual(branch.properties.confidence.enum, ["low"]);
+        assert.deepEqual(branch.properties.confidence.enum, ["low", "medium"]);
     }
     return completion(action);
   };
@@ -149,12 +205,16 @@ test("live /api/chat sends a strict Responses request and returns the action con
       message: `  ${input.message}  `,
       api_key: "client-injected",
     }),
-    { apiKeys: { openai: ` ${TEST_KEY} ` }, fetchImpl: fakeFetch },
+    {
+      apiKeys: { openai: ` ${TEST_KEY} ` },
+      fetchImpl: fakeFetch,
+      documents: [],
+    },
   );
   assert.equal(calls, 1);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("cache-control"), "no-store");
-  assert.deepEqual(parseChatResponse(await response.json()), action);
+  assertGuardedAction(parseChatResponse(await response.json()));
 });
 
 test("live ordinary replies use the existing message contract", async () => {
@@ -167,7 +227,7 @@ test("live ordinary replies use the existing message contract", async () => {
     options(async () => completion(message)),
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(parseChatResponse(await response.json()), message);
+  assertOrdinaryReply(parseChatResponse(await response.json()));
 });
 
 test("every demo bypasses upstream with or without a configured key", async () => {
@@ -326,7 +386,11 @@ test("invented citations are rejected for both action and message replies", asyn
   };
   for (const reply of [action, message]) {
     const response = await handleApiRequest(
-      request(),
+      request(
+        reply.type === "message"
+          ? { ...input, message: "Where is the opening checklist?" }
+          : input,
+      ),
       options(async () => completion({ ...reply, sources: [invented] })),
     );
     await assertError(response, 502);
@@ -424,17 +488,20 @@ test("the Worker passes its backend key binding to live OpenAI without serving a
       return completion(message);
     },
   );
-  const response = await worker.fetch(request(), {
-    OPENAI_API_KEY: TEST_KEY,
-    ASSETS: {
-      fetch: async () => {
-        assetCalls += 1;
-        return new Response("assets");
+  const response = await worker.fetch(
+    request({ ...input, message: "Where is the opening checklist?" }),
+    {
+      OPENAI_API_KEY: TEST_KEY,
+      ASSETS: {
+        fetch: async () => {
+          assetCalls += 1;
+          return new Response("assets");
+        },
       },
     },
-  });
+  );
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), message);
+  assertOrdinaryReply(parseChatResponse(await response.json()), "sample");
   assert.equal(upstreamCalls, 1);
   assert.equal(assetCalls, 0);
 });

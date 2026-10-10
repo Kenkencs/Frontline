@@ -9,12 +9,16 @@ import {
   invalidResponse,
   parseStructured,
   requestJson,
-  unsupportedStream,
+  requestStream,
+  eventJson,
+  refusedResponse,
 } from "./request";
 
 // Claude supports a smaller schema subset. Keep the original parser and guards
 // authoritative; adapt only the schema sent to its API, without mutating it.
-function claudeSchema(schema: Record<string, unknown>): Record<string, unknown> {
+function claudeSchema(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
   const result = { ...schema };
   for (const keyword of [
     "minimum",
@@ -70,8 +74,103 @@ export class AnthropicProvider implements AIProvider {
     return parseStructured(await this.request(input, schema), schema);
   }
 
-  stream(_input: ProviderInput): AsyncIterable<string> {
-    return unsupportedStream();
+  async *stream(input: ProviderInput): AsyncIterable<string> {
+    let started = false;
+    let textSeen = false;
+    let stopReason: string | undefined;
+    const blocks = new Map<number, string>();
+    const events = requestStream(
+      {
+        providerName: "Anthropic",
+        apiKey: this.apiKey,
+        url: "https://api.anthropic.com/v1/messages",
+        keyHeader: "x-api-key",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: input.model,
+          system: input.systemPrompt,
+          messages: [{ role: "user", content: input.prompt }],
+          max_tokens: input.maxOutputTokens ?? 1200,
+          stream: true,
+        },
+      },
+      this.fetchImpl,
+    );
+    for await (const event of events) {
+      const value = eventJson(event);
+      if (typeof value.type !== "string") throw invalidResponse();
+      if (value.type === "error") throw invalidResponse();
+      if (value.type === "message_start") {
+        if (
+          started ||
+          !isRecord(value.message) ||
+          value.message.role !== "assistant"
+        )
+          throw invalidResponse();
+        started = true;
+      }
+      if (value.type === "content_block_start") {
+        if (
+          !started ||
+          !Number.isInteger(value.index) ||
+          !isRecord(value.content_block) ||
+          blocks.has(value.index as number)
+        )
+          throw invalidResponse();
+        const type = value.content_block.type;
+        if (
+          typeof type !== "string" ||
+          !["text", "thinking", "redacted_thinking"].includes(type)
+        )
+          throw invalidResponse();
+        blocks.set(value.index as number, type);
+        if (type === "text" && value.content_block.text) {
+          if (typeof value.content_block.text !== "string")
+            throw invalidResponse();
+          textSeen ||= !!value.content_block.text.trim();
+          yield value.content_block.text;
+        }
+      }
+      if (value.type === "content_block_delta") {
+        if (
+          !started ||
+          !Number.isInteger(value.index) ||
+          !isRecord(value.delta)
+        )
+          throw invalidResponse();
+        const block = blocks.get(value.index as number);
+        if (!block) throw invalidResponse();
+        if (value.delta.type === "text_delta") {
+          if (block !== "text" || typeof value.delta.text !== "string")
+            throw invalidResponse();
+          textSeen ||= !!value.delta.text.trim();
+          if (value.delta.text) yield value.delta.text;
+        } else if (
+          !["thinking_delta", "signature_delta"].includes(
+            value.delta.type as string,
+          ) ||
+          !["thinking", "redacted_thinking"].includes(block)
+        )
+          throw invalidResponse();
+      }
+      if (value.type === "content_block_stop") {
+        if (!blocks.delete(value.index as number)) throw invalidResponse();
+      }
+      if (value.type === "message_delta") {
+        if (!started || !isRecord(value.delta)) throw invalidResponse();
+        if (value.delta.stop_reason === "refusal") throw refusedResponse();
+        if (value.delta.stop_reason != null) {
+          if (value.delta.stop_reason !== "end_turn") throw invalidResponse();
+          stopReason = value.delta.stop_reason;
+        }
+      }
+      if (value.type === "message_stop") {
+        if (!started || stopReason !== "end_turn" || blocks.size || !textSeen)
+          throw invalidResponse();
+        return;
+      }
+    }
+    throw invalidResponse();
   }
 
   private async request(

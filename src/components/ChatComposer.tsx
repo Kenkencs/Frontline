@@ -95,8 +95,8 @@ export function ChatComposer({
       </form>
       <p className="composer-footnote">
         {mode === "demo"
-          ? "Backend demo · Fictional sample policies"
-          : "AI guidance · Company policies not connected · Verify with your manager"}
+          ? "Local demo guidance · Check sources · Verify with your manager"
+          : "AI guidance · Check sources · Verify with your manager"}
       </p>
     </div>
   );

@@ -3,13 +3,18 @@ import {
   parseChatRequest,
   parseChatResponse,
 } from "../shared/validation";
-import { getMockResponse } from "./mockChat";
 import { models } from "../shared/catalog";
-import { generateChat } from "./chat";
+import { roles } from "../shared/catalog";
+import type { KnowledgeDocument } from "./knowledge/types";
+import { getCurrentDocuments } from "./knowledge/retrieve";
+import { runMainAgent } from "./agents/mainAgent";
 import { ProviderError } from "./providers/AIProvider";
 import { createProvider, type ProviderConfig } from "./providers/registry";
 
-export type ApiOptions = ProviderConfig;
+export type ApiOptions = ProviderConfig & {
+  documents?: KnowledgeDocument[];
+  now?: Date;
+};
 
 export function jsonResponse(
   value: unknown,
@@ -61,7 +66,47 @@ export async function handleApiRequest(
   request: Request,
   options: ApiOptions = {},
 ): Promise<Response> {
-  if (new URL(request.url).pathname !== "/api/chat")
+  const url = new URL(request.url);
+  if (url.pathname === "/api/knowledge") {
+    if (request.method !== "GET")
+      return jsonResponse({ error: "Use GET /api/knowledge." }, 405, {
+        Allow: "GET",
+      });
+    const requestedRole = url.searchParams.get("employee_role");
+    const role = roles.find((item) => item.id === requestedRole);
+    if (requestedRole && !role)
+      return jsonResponse({ error: "Choose a supported employee role." }, 400);
+    const documents = getCurrentDocuments(
+      options.documents,
+      options.now,
+      role?.id,
+    ).map((doc) => ({
+      documentId: doc.documentId,
+      revision: doc.revision,
+      title: doc.title,
+      version: doc.version,
+      effectiveFrom: doc.effectiveFrom,
+      reviewBy: doc.reviewBy,
+      sample: doc.sample,
+      sections: doc.sections.map((section) => ({
+        id: `${encodeURIComponent(doc.documentId)}:${doc.revision}:${encodeURIComponent(section.id)}`,
+        title: doc.title,
+        version: doc.version,
+        section: section.section,
+        excerpt: section.excerpt,
+        sample: doc.sample,
+      })),
+    }));
+    return jsonResponse({
+      documents,
+      mode: !documents.length
+        ? "none"
+        : documents.some((doc) => doc.sample)
+          ? "sample"
+          : "company",
+    });
+  }
+  if (url.pathname !== "/api/chat")
     return jsonResponse({ error: "API route not found." }, 404);
   if (request.method !== "POST")
     return jsonResponse({ error: "Use POST /api/chat." }, 405, {
@@ -101,10 +146,14 @@ export async function handleApiRequest(
       (model) =>
         model.provider === input.provider && model.model === input.model,
     )!;
-    const response =
-      selection.mode === "demo"
-        ? getMockResponse(input)
-        : await generateChat(input, createProvider(input.provider, options));
+    const response = await runMainAgent(input, {
+      mode: selection.mode,
+      ...(selection.mode === "live"
+        ? { provider: createProvider(input.provider, options) }
+        : {}),
+      documents: options.documents,
+      now: options.now,
+    });
     return jsonResponse(parseChatResponse(response));
   } catch (error) {
     if (error instanceof ProviderError)

@@ -1,6 +1,10 @@
 import type { AIProvider, OutputSchema, ProviderInput } from "./AIProvider";
-import { jsonSystemPrompt, readChatCompletion } from "./chatCompletion";
-import { parseStructured, requestJson, unsupportedStream } from "./request";
+import {
+  jsonSystemPrompt,
+  readChatCompletion,
+  streamChatCompletion,
+} from "./chatCompletion";
+import { parseStructured, requestJson, requestStream } from "./request";
 
 export class KimiProvider implements AIProvider {
   constructor(
@@ -19,8 +23,27 @@ export class KimiProvider implements AIProvider {
     return parseStructured(await this.request(input, schema), schema);
   }
 
-  stream(_input: ProviderInput): AsyncIterable<string> {
-    return unsupportedStream();
+  stream(input: ProviderInput): AsyncIterable<string> {
+    return streamChatCompletion(
+      requestStream(
+        {
+          providerName: "Kimi",
+          apiKey: this.apiKey,
+          url: "https://api.moonshot.ai/v1/chat/completions",
+          body: {
+            model: input.model,
+            messages: [
+              { role: "system", content: input.systemPrompt },
+              { role: "user", content: input.prompt },
+            ],
+            thinking: { type: "disabled" },
+            max_completion_tokens: input.maxOutputTokens ?? 1200,
+            stream: true,
+          },
+        },
+        this.fetchImpl,
+      ),
+    );
   }
 
   private async request(

@@ -16,6 +16,8 @@ export interface Source {
   version: string;
   section: string;
   excerpt: string;
+  // Omitted on legacy fixtures. Only an explicit false denotes company evidence.
+  sample?: boolean;
 }
 
 export interface ActionResponse {

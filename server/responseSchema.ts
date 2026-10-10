@@ -1,8 +1,8 @@
 // OpenAI requires an object at the root. Nest the union, then unwrap it on the server.
-// Sources are empty until the Knowledge Agent can provide verified documents.
+// Sources are verified against the Knowledge Agent's current retrieval result.
 const sources = {
   type: "array",
-  maxItems: 0,
+  maxItems: 4,
   items: {
     type: "object",
     properties: {
@@ -11,8 +11,9 @@ const sources = {
       version: { type: "string" },
       section: { type: "string" },
       excerpt: { type: "string" },
+      sample: { type: "boolean" },
     },
-    required: ["id", "title", "version", "section", "excerpt"],
+    required: ["id", "title", "version", "section", "excerpt", "sample"],
     additionalProperties: false,
   },
 };
@@ -45,7 +46,7 @@ export const chatOutputSchema = {
               maxItems: 8,
             },
             sources,
-            confidence: { type: "string", enum: ["low"] },
+            confidence: { type: "string", enum: ["low", "medium"] },
             escalate: { type: "boolean" },
           },
           required: [

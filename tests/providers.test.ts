@@ -89,19 +89,66 @@ test("generateChat accepts a common provider for action and message responses wi
     },
   };
 
-  assert.deepEqual(await generateChat(chatInput, fakeProvider), action);
+  const guardedAction = await generateChat(chatInput, fakeProvider, {
+    documents: [],
+  });
+  assert.equal(guardedAction.type, "action");
+  assert.ok(guardedAction.type === "action");
+  assert.equal(guardedAction.risk, "high");
+  assert.equal(guardedAction.confidence, "low");
+  assert.equal(guardedAction.escalate, true);
+  assert.deepEqual(guardedAction.sources, []);
+  assert.ok(
+    guardedAction.actions.includes("Do not confirm that the food is safe."),
+  );
+  assert.ok(
+    guardedAction.actions.includes("Check the latest allergen information."),
+  );
+  assert.ok(
+    guardedAction.actions.includes("Check cross-contamination information."),
+  );
+  assert.match(guardedAction.summary, /Possible allergy case/);
   nextReply = message;
-  assert.deepEqual(await generateChat(chatInput, fakeProvider), message);
+  const ordinaryInput = {
+    ...chatInput,
+    message: "Where is the opening checklist?",
+  };
+  const ordinary = await generateChat(ordinaryInput, fakeProvider, {
+    documents: [],
+  });
+  assert.ok(ordinary.type === "message");
+  assert.ok(
+    ordinary.content.startsWith(
+      "I could not find a current policy for this question.",
+    ),
+  );
+  assert.match(ordinary.content, /manager.*current relevant company policy/);
+  assert.deepEqual(ordinary.sources, []);
   assert.equal(received.length, 2);
-  for (const input of received) {
+  for (const [index, input] of received.entries()) {
     assert.equal(input.model, chatInput.model);
     assert.equal(input.maxOutputTokens, 1200);
     assert.equal(typeof input.systemPrompt, "string");
     assert.ok(input.systemPrompt.length > 0);
-    assert.deepEqual(JSON.parse(input.prompt), {
-      employee_role: chatInput.employee_role,
-      message: chatInput.message,
+    const prompt = JSON.parse(input.prompt);
+    assert.deepEqual(Object.keys(prompt).sort(), [
+      "employee_role",
+      "knowledge",
+      "message",
+      "risk_assessment",
+    ]);
+    assert.equal(prompt.employee_role, chatInput.employee_role);
+    assert.equal(
+      prompt.message,
+      index === 0 ? chatInput.message : ordinaryInput.message,
+    );
+    assert.deepEqual(prompt.knowledge, {
+      mode: "none",
+      missing: true,
+      sources: [],
     });
+    assert.equal(prompt.risk_assessment.escalate, true);
+    assert.equal(prompt.risk_assessment.requiresAction, index === 0);
   }
   assert.equal(networkCalls, 0);
 });
@@ -115,6 +162,7 @@ test("application guards reject unsafe responses even if an adapter bypasses its
     excerpt: PRIVATE_DETAIL,
   };
   const unsafeReplies: unknown[] = [
+    message,
     { type: "action" },
     { ...action, actions: [] },
     { ...action, sources: [inventedSource] },
@@ -122,6 +170,7 @@ test("application guards reject unsafe responses even if an adapter bypasses its
     { ...action, confidence: "medium" },
     { ...action, confidence: "high" },
     { ...action, escalate: false },
+    { ...action, risk: "low" },
   ];
   for (const reply of unsafeReplies) {
     const unsafeProvider: AIProvider = {
@@ -137,7 +186,7 @@ test("application guards reject unsafe responses even if an adapter bypasses its
       },
     };
     await assert.rejects(
-      () => generateChat(chatInput, unsafeProvider),
+      () => generateChat(chatInput, unsafeProvider, { documents: [] }),
       controlledError(502),
     );
   }
@@ -282,19 +331,4 @@ test("registry maps all four live providers and never falls back for unknown IDs
     controlledError(501),
   );
   assert.equal(calls, 1);
-});
-
-test("stream explicitly reports deferred support without calling upstream", async () => {
-  let calls = 0;
-  const provider = new OpenAIProvider(TEST_KEY, async () => {
-    calls += 1;
-    return completedText("No unfinished response should be sent");
-  });
-  const chunks: string[] = [];
-  await assert.rejects(async () => {
-    for await (const chunk of provider.stream(providerInput))
-      chunks.push(chunk);
-  }, controlledError(501));
-  assert.deepEqual(chunks, []);
-  assert.equal(calls, 0);
 });

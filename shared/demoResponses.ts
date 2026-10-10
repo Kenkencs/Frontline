@@ -13,7 +13,7 @@ export const allergyAction: ActionResponse = {
     "Escalate to the manager if safety cannot be verified.",
   ],
   sources: samplePolicies.slice(0, 2),
-  confidence: "high",
+  confidence: "low",
   escalate: true,
 };
 

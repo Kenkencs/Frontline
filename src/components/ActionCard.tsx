@@ -22,6 +22,9 @@ export function SourceLinks({
           <span>
             {source.title} {source.version}{" "}
             <span className="source-section">{source.section}</span>
+            {source.sample !== false && (
+              <span className="source-section"> · Sample</span>
+            )}
           </span>
         </button>
       ))}
@@ -31,7 +34,6 @@ export function SourceLinks({
 
 export function ActionCard({
   response,
-  mode,
   onSource,
   onEscalate,
 }: {
@@ -40,6 +42,9 @@ export function ActionCard({
   onSource: (source: Source) => void;
   onEscalate: () => void;
 }) {
+  const companyEvidence =
+    response.sources.length > 0 &&
+    response.sources.every((source) => source.sample === false);
   return (
     <section
       className={`action-card risk-${response.risk}`}
@@ -71,12 +76,16 @@ export function ActionCard({
         </ol>
         <div className="sources-block">
           <div className="section-eyebrow">
-            SOURCES {mode === "demo" && <span>Sample policies</span>}
+            SOURCES{" "}
+            {!!response.sources.length && !companyEvidence && (
+              <span>Sample policies</span>
+            )}
           </div>
           <SourceLinks sources={response.sources} onSource={onSource} />
           {!response.sources.length && (
             <p className="source-section">
-              No company sources connected. Verify guidance with your manager.
+              No relevant current policy found. Verify guidance with your
+              manager.
             </p>
           )}
         </div>
@@ -85,9 +94,9 @@ export function ActionCard({
         <div
           className="confidence"
           title={
-            mode === "demo"
-              ? "Confidence in the sample procedure. This does not confirm that a food is safe."
-              : "Company evidence is unavailable. Low confidence is not a safety assessment."
+            companyEvidence
+              ? "Confidence concerns the retrieved procedure, never a guarantee of safety."
+              : "Sample or missing company evidence requires manager verification. This is not a safety guarantee."
           }
         >
           <ShieldCheck size={17} />

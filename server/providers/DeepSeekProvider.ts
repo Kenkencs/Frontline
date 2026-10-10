@@ -1,6 +1,10 @@
 import type { AIProvider, OutputSchema, ProviderInput } from "./AIProvider";
-import { jsonSystemPrompt, readChatCompletion } from "./chatCompletion";
-import { parseStructured, requestJson, unsupportedStream } from "./request";
+import {
+  jsonSystemPrompt,
+  readChatCompletion,
+  streamChatCompletion,
+} from "./chatCompletion";
+import { parseStructured, requestJson, requestStream } from "./request";
 
 export class DeepSeekProvider implements AIProvider {
   constructor(
@@ -19,8 +23,27 @@ export class DeepSeekProvider implements AIProvider {
     return parseStructured(await this.request(input, schema), schema);
   }
 
-  stream(_input: ProviderInput): AsyncIterable<string> {
-    return unsupportedStream();
+  stream(input: ProviderInput): AsyncIterable<string> {
+    return streamChatCompletion(
+      requestStream(
+        {
+          providerName: "DeepSeek",
+          apiKey: this.apiKey,
+          url: "https://api.deepseek.com/chat/completions",
+          body: {
+            model: input.model,
+            messages: [
+              { role: "system", content: input.systemPrompt },
+              { role: "user", content: input.prompt },
+            ],
+            thinking: { type: "disabled" },
+            max_tokens: input.maxOutputTokens ?? 1200,
+            stream: true,
+          },
+        },
+        this.fetchImpl,
+      ),
+    );
   }
 
   private async request(

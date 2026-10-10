@@ -1,3 +1,9 @@
+# Current MVP status
+
+The `1.0.0` source implements all seven requested increments. **95 tests pass**, TypeScript passes, and the React/Worker production build passes. The complete demo uses local retrieval, version checks, and risk assessment without paid AI. Real provider responses and streams remain unverified; the earlier OpenAI connection timed out and other provider keys are unconfigured. The published Site remains on increment 2; later source versions are saved privately without deployment. Secure hosted-secret setup is pending.
+
+The increment records below are historical. The final record at the end supersedes their statements about deferred code.
+
 # Increment 1 verification
 
 Completed on 9 October 2026:
@@ -91,3 +97,24 @@ Checked on 10 October 2026:
 Increment 5 adds live adapter code and backend key bindings, not new credentials. No additional key was created, no plaintext secret was exposed, and no paid provider call was made in this increment. The prior OpenAI connectivity failure remains unresolved; Anthropic, DeepSeek, and Kimi keys are not configured. Real generated replies remain unverified.
 
 This increment is saved as a private source checkpoint without deployment; the confirmed version is recorded in the chat handoff. The published Site remains on increment 2, and secure hosted secret setup remains pending. Streaming still returns a controlled `501` for all adapters. Company retrieval, policy-version verification, and the Knowledge/Risk/Main Agent workflow remain future increments.
+
+# Final MVP: increments 6 and 7 verification
+
+Checked on 10 October 2026:
+
+- All **95 tests passed**: loopback HTTP, frontend clients, provider transports, Worker routing, retrieval/version checks, risk rules, final synthesis guards, and streaming. No runtime dependency or provider SDK was added.
+- TypeScript and the production React/Worker build passed. Version `1.0.0` denotes this student MVP, not production safety certification.
+- Seven retrieval tests cover latest effective approvals, retired/overdue versions without fallback to older approvals, future/draft revisions, invalid or ambiguous metadata, role filtering, sample/company modes, exact lexical matching, and the four-source limit.
+- Seven risk tests cover allergy, emergency symptoms, operational hazards, payments/customer situations, missing/sample evidence, ordinary questions, and permission decisions with or without matching company evidence. Rules are a limited classifier, not a safety assessment certification.
+- Sixteen Main Agent/API tests verify retrieved context, canonical citations, risk/confidence/escalation limits, application-owned verification/safety steps, ordinary versus action replies, permission and food-safety regressions, shared demo/live orchestration, and current role-filtered knowledge catalogs. Missing/sample ordinary replies use retrieved excerpts or clarification, not unconstrained model claims.
+- Four knowledge-client tests cover valid catalogs, malformed records, failures without local fallbacks, and cancellation. The UI uses the same backend catalog as retrieval. Obsolete requests cannot update a page after a role change or unmount.
+- Sixteen streaming tests cover all four native formats, split UTF-8/CRLF/multiline SSE, text versus reasoning, completion markers, refusal/tools/truncation, malformed frames, safe errors, deadlines through body reads, and early-stop cleanup. All use fake fetch. `POST /api/chat` returns completed JSON, not partial guidance.
+- A built-Worker smoke check returned sourced high-risk demo cards with low confidence for all four demo providers, and JSON `503` for all four unconfigured live providers. The knowledge endpoint returned five current sample documents and excluded the retired revision.
+- Frontend production assets contain no provider endpoint, backend key variable name, environment read, or project-key pattern. Git ignores the real `.env` and does not track it. Source/deployment packages exclude secret files.
+- Browser checks loaded the current Knowledge Base and displayed policy effective/review dates and the v3 fictional Food Safety excerpt. A fresh allergy question rendered conservative actions, retrieved sample citations, low confidence, and manager escalation.
+- Changing the role to Cashier preserved the original Waiter role/question in that card's manager draft. Saving placed it in Manager Dashboard marked Not sent. Selecting Claude demo and sending an opening checklist produced an ordinary sourced reply through the same API.
+- A fresh permission question produced a manager-verification card despite matching an opening checklist. The responsive sidebar opened and New conversation closed it. The preview screenshot is stored beside the source ZIP. This was a functional/visual pass, not an exhaustive device/accessibility audit.
+
+No key was created, plaintext secret exposed, or paid AI call made in this final increment. Real provider compatibility/account access, the OpenAI network timeout, other provider credentials, secure hosted-secret handoff, and a new deployment remain unverified or pending. The final private checkpoint's version/commit are reported in the handoff after saving succeeds.
+
+All default policies are fictional. Replace them with approved company documents before workplace use; the application trusts maintained approval/version metadata rather than independently verifying approval. Conversations/drafts reset on reload, the role selector is context rather than authentication, and no manager notification is sent. README and ARCHITECTURE explain these limits and how to modify the code.

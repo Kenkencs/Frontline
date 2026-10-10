@@ -31,9 +31,10 @@ export function parseChatRequest(value: unknown): ChatRequest {
   };
 }
 
-function isSource(value: unknown): value is Source {
+export function isSource(value: unknown): value is Source {
   return (
     isRecord(value) &&
+    (value.sample === undefined || typeof value.sample === "boolean") &&
     ["id", "title", "version", "section", "excerpt"].every(
       (key) => typeof value[key] === "string" && value[key].trim().length > 0,
     )

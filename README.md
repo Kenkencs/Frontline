@@ -1,6 +1,8 @@
 # Frontline Workplace Knowledge Agent
 
-This is **increment 5: four provider adapters behind one chat API**. React calls `POST /api/chat`; the backend selects OpenAI, Anthropic, DeepSeek, or Kimi through `AIProvider` and returns the same message/Action Card format. Each has a clearly labeled live choice and a demo choice. Live adapters are implemented, but real provider responses remain unverified: OpenAI connectivity previously timed out, and the other provider keys have not been configured. Hosted live activation is also pending.
+A small, conversation-first MVP for frontline workers. React sends a question to one backend API, which coordinates a **Main Agent, Knowledge Agent, and Risk Agent** and returns an ordinary message or a structured Action Card. GPT, Claude, DeepSeek, and Kimi share the same provider interface; changing the selected model does not change the frontend.
+
+The complete demo flow works without a key or paid AI call. Live provider adapters and streaming methods are implemented, but real live responses remain unverified: the earlier OpenAI connection timed out, other provider keys are not configured, and secure hosted-secret handoff is pending. See [verification](docs/VERIFICATION.md) for the latest checks and deployment status.
 
 ## Run it
 
@@ -11,7 +13,7 @@ npm install
 npm run dev
 ```
 
-One command starts Vite and the Node backend. Open Vite’s printed local URL (normally `http://127.0.0.1:5173`). Vite proxies `/api` to the loopback backend on port 3001. Stop both with Ctrl+C. If you prefer separate terminals, use `npm run dev:server` and `npm run dev:frontend`.
+This starts Vite and the Node backend. Open Vite's printed local URL, normally `http://127.0.0.1:5173`. Vite proxies `/api` to the loopback backend on port 3001. Ctrl+C stops both. Separate terminals can use `npm run dev:server` and `npm run dev:frontend`.
 
 ```sh
 npm test
@@ -19,43 +21,70 @@ npm run build
 npm run preview
 ```
 
-The preview command also starts both processes; open its printed URL (normally port 4173). The build produces `dist/client` for React and `dist/server/index.js` for the hosted Worker. The Worker and local Node server use the same API handler.
+Preview starts both processes; its frontend normally uses port 4173. The build produces `dist/client` for React and `dist/server/index.js` for the hosted Worker. Both backend adapters use the same API handler.
 
-## Try it
+## Try the demo
 
-- Start a new conversation and send “A customer has a food allergy” for a high-risk Action Card.
-- Send “Opening shift checklist” for an ordinary message or “Handling a customer complaint” for a medium-risk card.
-- Choose GPT, Claude, DeepSeek, or Kimi **demo** to receive backend fixtures without an API key or provider charge.
-- Choose any **live** model for its backend provider path. It needs that provider's server-side key and outbound network access. Errors stay visible; the app never substitutes a demo answer or a different provider for a failed live request.
-- Live Action Cards have low confidence and no company sources until retrieval is connected. **View Source** is disabled when sources are unavailable.
-- Open a source to read its fictional excerpt.
-- Use **Ask Manager** to edit/copy an escalation note or save a session draft to Manager Dashboard. Nothing is sent.
-- If a request fails, **Retry request** resends the original role, model, and question without duplicating the worker message. Each chat keeps its own loading/error state.
-- Conversations and drafts stay in React memory. Reloading resets them. The backend stores nothing, and only the current question is sent; visible history is not model memory.
+Select any model labeled **demo**, then try:
 
-Demo keyword matching demonstrates rendering. Every live provider uses the same conservative workplace prompt and runtime checks, but neither path verifies food safety or current company policy versions. “High confidence” on sample cards describes the fictional procedure, never whether a food is safe. A dedicated Knowledge Agent and Risk Agent are not implemented yet.
+- “Customer says she has a severe peanut allergy. Can she eat this cake?” — a high-risk Action Card with conservative steps, sample sources, low confidence, and manager escalation.
+- “Opening shift checklist” — an ordinary message containing matching procedure excerpts.
+- “Can I refund this customer?” — a medium-risk card requiring policy and authority checks.
+- “Is this cake safe to eat?” — a high-risk card requiring exact-product verification, even without an allergy keyword.
+- An unrelated question — an explicit missing-evidence response, without invented sources.
+
+Demo sends use the same Knowledge Agent, Risk Agent, and final validation as live sends. Only the synthesis differs: demo mode composes the answer locally; live mode asks the selected provider for structured output. Demo models never call a provider, even if backend keys exist. Initial example conversations are static fictional fixtures; every new send uses the backend pipeline.
+
+**Knowledge Base** loads the backend's current approved catalog for the selected role. **View Source** displays the exact retrieved excerpt and its sample/company label. **Ask Manager** lets you edit or copy a note, or save a session draft to Manager Dashboard; nothing is sent to another person.
+
+Conversations and drafts live in React memory and reset on reload. Only the current question is sent, so visible history is not model memory. Failed live requests stay visible and never become demo answers or switch providers. Retry keeps the original role, model, and question without duplicating the worker message.
 
 ## Read the code in this order
 
-1. `shared/chat.ts`: common request/response types.
-2. `src/services/chatClient.ts`: the frontend’s only chat transport, using `fetch('/api/chat')`.
-3. `server/api.ts`: validates HTTP input and returns the standard response or a JSON error.
-4. `shared/catalog.ts`: approved provider/model selections and their live/demo mode.
-5. `server/providers/AIProvider.ts`: common input/output types, three methods, and safe provider errors.
-6. `server/chat.ts`: workplace prompt and evidence checks, using only the common interface.
-7. `server/providers/OpenAIProvider.ts`, `AnthropicProvider.ts`, `DeepSeekProvider.ts`, and `KimiProvider.ts`: translate the common interface into each provider's API.
-8. `server/providers/registry.ts`: selects an implemented adapter from the requested provider.
-9. `server/providers/request.ts`: shared backend HTTP, timeout, safe errors, and JSON parsing. `chatCompletion.ts` contains the small format helpers shared by DeepSeek and Kimi.
-10. `server/responseSchema.ts`: message/action schema, nested in a root object and unwrapped on the backend.
-11. `server/mockChat.ts`: demo behavior, kept separate from the live path.
-12. `shared/validation.ts`: checks incoming JSON at runtime, on both sides.
-13. `src/components/ActionCard.tsx`: renders an action response without knowing its provider.
-14. `server/nodeServer.ts` and `server/worker.ts`: small local/hosted adapters.
-15. `src/App.tsx`: coordinates conversations, role, model, and dialogs.
+Follow one question through these small modules:
 
-There is no application router, database, state-management library, agent framework, or provider SDK. Node’s native HTTP server is sufficient here. `tsx` runs the TypeScript backend and Node’s built-in test runner. Read `docs/ARCHITECTURE.md` for the current flow and the remaining increments.
+1. `shared/chat.ts` and `shared/validation.ts`: request/response types and runtime checks. `shared/catalog.ts` allowlists model choices and distinguishes demo from live.
+2. `src/services/chatClient.ts` and `server/api.ts`: browser HTTP transport, input validation, model selection, and safe JSON errors.
+3. `server/agents/mainAgent.ts`: retrieve evidence, assess risk, synthesize, and validate the final response. `server/chat.ts` is a thin entry point for existing live callers.
+4. `server/knowledge/types.ts`, `documents.ts`, and `retrieve.ts`: editable SOP data, current-version selection, and local keyword retrieval.
+5. `server/agents/riskAgent.ts`: simple operational-risk rules, required actions, confidence limits, and escalation.
+6. `server/providers/AIProvider.ts` and `registry.ts`: the common contract and explicit adapter factory.
+7. The four provider files, followed by `request.ts`, `chatCompletion.ts`, and `sse.ts`: native HTTP requests, provider output formats, shared errors, and streaming transport.
+8. `server/responseSchema.ts`: the provider-facing JSON envelope. The Main Agent unwraps it into the unchanged `ChatResponse`.
+9. `src/components/ActionCard.tsx`, `KnowledgePage.tsx`, and `WorkspaceDialogs.tsx`: cards, the read-only catalog, source viewing, and manager drafts. `src/App.tsx` owns conversation state.
+10. `server/dev.ts`, `nodeServer.ts`, and `worker.ts`: local and hosted adapters. `tests/` exercises the boundaries with fake providers and fake HTTP responses.
 
-## Provider interface
+There is no provider SDK, agent framework, database, vector store, application router, or extra state library. The [architecture walkthrough](docs/ARCHITECTURE.md) explains how the modules fit together.
+
+## Replace the sample knowledge
+
+Edit **`server/knowledge/documents.ts`** on the backend. All included SOPs are fictional samples; their approval metadata demonstrates the software's version rules. They cannot establish an actual company's procedure or a product's ingredients.
+
+Each `KnowledgeDocument` contains:
+
+| Field              | Meaning                                                                |
+| ------------------ | ---------------------------------------------------------------------- |
+| `documentId`       | Stable identity shared by every revision of one policy                 |
+| `revision`         | Positive integer used to select the latest revision                    |
+| `title`, `version` | Human-readable citation labels                                         |
+| `status`           | `draft`, `approved`, or `retired`                                      |
+| `effectiveFrom`    | First effective day, in `YYYY-MM-DD` UTC                               |
+| `reviewBy`         | Last usable day, inclusive, in `YYYY-MM-DD` UTC                        |
+| `roles`            | Allowed `waiter`, `cashier`, and/or `kitchen_staff` roles              |
+| `sample`           | `true` for fictional/example evidence                                  |
+| `sections`         | Stable section ID, section label, exact excerpt, and matching keywords |
+
+Use `sample: false` only after replacing the sample content with actual company documents and checking their approval, dates, roles, and versions. The code trusts this maintained metadata; it cannot prove that a person approved a document. The `sampleDocument()` helper always creates samples, so real documents should have an explicit `KnowledgeDocument` record.
+
+When a policy changes, use the same `documentId` with a higher integer revision and the new approved content and dates. Do not relabel copied old text as a new policy. The highest already-effective non-draft revision is selected **before** expiry, role, or keyword filtering. If it is retired, overdue, or unavailable to the role, older approved text is not revived. A future revision does not replace the current revision until its effective day. Duplicate revisions and invalid dates are excluded. Expired sample policies also stop appearing until properly reviewed.
+
+Retrieval matches normalized keyword terms and returns at most four excerpts. Add meaningful keywords and explicit variants such as `allergy` and `allergic`; this is simple lexical retrieval, not semantic search. A missed match produces missing evidence. There are no document uploads or browser-side policy editing.
+
+Sample or missing evidence caps Action Card confidence at **low**. Current company evidence caps it at **medium**. A mixed sample/company result is treated as sample. Confidence describes procedural evidence, never whether a cake is safe. A keyword match is evidence of relevant text, not permission to act. Detected permission questions always require an Action Card and manager verification, even when a current company policy matches.
+
+Required-action cards and all cards with sample or missing evidence use application-owned verification steps and summaries, including low-risk cards. An AI reply cannot replace those steps with refund permission, a safety guarantee, or a diagnosis. Ordinary replies with sample or missing evidence also use application-owned excerpts or clarification text plus manager verification, rather than unchecked provider prose. Current-company ordinary replies can use provider-generated wording. The lexical risk rules remain incomplete: an unfamiliar phrase can miss a trigger, and a low-risk label does not establish safety or authority.
+
+## Model providers
 
 ```ts
 interface AIProvider {
@@ -68,43 +97,45 @@ interface AIProvider {
 }
 ```
 
-`ProviderInput` contains the model, system prompt, user prompt, and optional output-token limit. `OutputSchema` contains a name, JSON schema, and runtime parser. None contains SDK types or keys. The chat module uses `structuredGenerate()`; its evidence safeguards also check the parsed result, so they apply to every provider. The parser is responsible for validating application fields; this project does not include a general JSON Schema validator.
+`ProviderInput` contains `model`, `systemPrompt`, `prompt`, and optional `maxOutputTokens`. `OutputSchema` contains a name, JSON schema, and runtime parser. Neither contains keys or SDK types. The Main Agent calls `structuredGenerate()` and applies the same evidence/risk checks to every adapter.
 
-All four adapters implement plain `generate()` and validated `structuredGenerate()`. `stream()` is reserved in the interface but currently throws a controlled `501`; backend streaming and UI streaming remain deferred until the complete live flow is verified. The API never renders an unfinished Action Card.
+| Provider  | Live model ID               | Backend variable    | Structured output                                       |
+| --------- | --------------------------- | ------------------- | ------------------------------------------------------- |
+| OpenAI    | `gpt-4.1-mini`              | `OPENAI_API_KEY`    | Native strict JSON schema                               |
+| Anthropic | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` | Native JSON schema adapted to Claude's supported subset |
+| DeepSeek  | `deepseek-flash`            | `DEEPSEEK_API_KEY`  | JSON-object mode plus schema prompt and runtime parsing |
+| Kimi      | `kimi-k2.6`                 | `KIMI_API_KEY`      | JSON-object mode plus schema prompt and runtime parsing |
 
-The factory has one explicit case per provider. Selecting Claude now routes to `AnthropicProvider`, selecting DeepSeek to `DeepSeekProvider`, and selecting Kimi to `KimiProvider`. Demo choices bypass these adapters and return fixtures without a key. No provider plugin system or automatic fallback is needed.
+OpenAI uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). Claude's adapter removes unsupported bounds from a copy of the API-facing schema; the original parser and common checks still enforce limits such as eight actions. [Claude structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
 
-| Provider  | Live model ID               | Backend variable    | Output strategy                                          |
-| --------- | --------------------------- | ------------------- | -------------------------------------------------------- |
-| OpenAI    | `gpt-4.1-mini`              | `OPENAI_API_KEY`    | Native JSON schema                                       |
-| Anthropic | `claude-haiku-4-5-20251001` | `ANTHROPIC_API_KEY` | Native JSON schema, adapted to Claude's supported subset |
-| DeepSeek  | `deepseek-flash`            | `DEEPSEEK_API_KEY`  | JSON-object mode, schema in prompt, runtime parsing      |
-| Kimi      | `kimi-k2.6`                 | `KIMI_API_KEY`      | JSON-object mode, schema in prompt, runtime parsing      |
+[DeepSeek JSON mode](https://api-docs.deepseek.com/guides/json_mode/) and [Kimi JSON mode](https://platform.kimi.ai/docs/guide/use-json-mode-feature-of-kimi-api) constrain JSON syntax; these adapters do not claim strict API enforcement of our complete schema. DeepSeek and Kimi explicitly disable thinking. Completed-output parsing never presents reasoning or tool arguments as the answer. Kimi uses the global `api.moonshot.ai` endpoint.
 
-Claude's adapter removes unsupported schema bounds such as `maxItems` only from the schema it sends; common runtime guards still enforce at most eight actions and no unverified sources. [Claude structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs) explains the supported schema subset. The fixed [Haiku 4.5 model](https://platform.claude.com/docs/en/models/haiku-4-5/overview) supports this format without enabling thinking.
-
-[DeepSeek JSON mode](https://api-docs.deepseek.com/guides/json_mode/) ensures JSON syntax, not our full application contract. [Kimi JSON mode](https://platform.kimi.ai/docs/guide/use-json-mode-feature-of-kimi-api) uses the same approach here. Both adapters explicitly disable thinking and accept only a completed answer, never reasoning text or tool calls. Their native request differences stay inside their adapters. The backend validates every result and reports malformed or truncated replies as errors.
+All four `stream()` implementations yield text chunks from server-sent events. Streaming is a provider capability, not the chat endpoint's response format: **`POST /api/chat` remains nonstreamed** and returns a completed, validated message or Action Card. Partial text has not passed the Main Agent's final checks and must not be rendered as a verified card. Stream parsing has fake-response coverage; real provider streaming is unverified.
 
 ## API
+
+Try the complete demo backend without a key:
 
 ```sh
 curl http://127.0.0.1:3001/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"Customer has a peanut allergy","employee_role":"waiter","provider":"openai","model":"demo-gpt"}'
+
+curl 'http://127.0.0.1:3001/api/knowledge?employee_role=waiter'
 ```
 
-Accepted demo and live pairs are in `shared/catalog.ts`. Use `"model":"gpt-4.1-mini"` with `"provider":"openai"` for the live path. Invalid fields return `400`, oversized bodies `413`, non-JSON content `415`, wrong methods `405`, and unknown routes `404`. Live errors use `503` for missing/authentication configuration, `429` for API usage limits, `422` for refusal, `504` for timeout, and `502` for unusable output or network failure. Errors use `{ "error": "message" }`; successful replies keep the common contract.
+`POST /api/chat` accepts `message`, `employee_role`, `provider`, and `model`. Accepted pairs are in `shared/catalog.ts`. Successful replies are either `{ type: "message", content, sources }` or `{ type: "action", risk, summary, actions, sources, confidence, escalate }`.
 
-## API keys and hosting
+A source contains `id`, `title`, `version`, `section`, `excerpt`, and an optional `sample` flag. The backend checks citations against the retrieved records and assigns the flag itself. Only explicit `sample: false` denotes company evidence; omitted flags on legacy example fixtures remain fictional.
 
-Only the backend reads API keys. The local Node server loads `.env`; `.env.example` contains empty variable names. `.env` and `.env.*` are ignored except `.env.example`. Configure only the providers you intend to use. Demo selections need no keys. Never put keys in React, frontend settings, the catalog, hosting metadata, or `VITE_` variables.
+`GET /api/knowledge` returns current approved documents and their sections. The optional `employee_role` filters the catalog; omitting it returns the current catalog across roles. It uses the same current-version selector as chat retrieval and does not call an AI provider.
 
-The Kimi adapter targets `api.moonshot.ai`, so `KIMI_API_KEY` must be issued by the global Kimi/Moonshot platform. Obtain other provider keys through their own secure consoles and save them in the ignored backend `.env`; this increment does not create those accounts or keys. A missing selected-provider key returns `503` before making a provider request.
+Errors use `{ "error": "message" }`. Validation failures return `400`, oversized bodies `413`, non-JSON chat input `415`, wrong methods `405`, and unknown routes `404`. Live failures use safe messages: configuration/authentication `503`, usage limits `429`, refusal `422`, timeout `504`, and unusable output/network failure `502`. Internal failures return a sanitized `500`.
 
-OpenAI Developers securely created a project key and saved it to the approved local `.env`, with a 30-day expiration. No key value appears in this source or downloadable package. Replace the key before its expiration when continuing development; the application does not rotate keys automatically.
+## Keys and deployment
 
-The existing private Sites deployment uses a Cloudflare Worker plus the React static assets. Its access audience is preserved. `scripts/prepare-hosting.mjs` writes non-secret build configuration; `server/worker.ts` delegates assets through the [Cloudflare assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). The Worker receives configured provider keys as hosted runtime secrets; local `.env` is never deployed. Current tooling has no secure file-to-Sites-secret handoff, so the hosted site remains on increment 2 pending that setup. The local source/build contains increment 5; source versions can be saved without deployment.
+Only backend environment variables hold provider keys. Node loads the ignored local `.env`; `.env.example` contains empty variable names. Worker deployments receive server-side runtime secrets. Local `.env` files are never deployed, and keys never belong in React, frontend Settings, `shared/catalog.ts`, `VITE_` variables, or build metadata. Missing selected-provider keys return `503` before a provider call.
 
-The OpenAI call uses [Responses structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). [GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini) supports this format. The schema helps enforce shape; runtime validation also rejects invented citations, unsupported confidence, and high risk without escalation. These checks are not a complete safety evaluator.
+An OpenAI key was provisioned through the approved secure workflow and saved locally. No additional provider keys were created for this MVP. Live validation still needs working outbound access and backend configuration; secure local-file-to-hosted-secret handoff remains pending. These source changes do not themselves update the published Site.
 
-The role selector is context, not authentication or permission to act as a manager. Company-specific access and real manager delivery remain future work. See `docs/VERIFICATION.md` for completed checks and limitations.
+The hosted build uses a Cloudflare Worker and its [static-assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). Its existing private Site audience is preserved. The role selector provides answer context, not authenticated employee identity or manager authority. This MVP has no persistent storage, company access control, real manager notifications, or streaming chat UI. Review the [verification record](docs/VERIFICATION.md) before treating it as a workplace deployment.

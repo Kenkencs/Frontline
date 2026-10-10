@@ -26,7 +26,7 @@ export function SourceDialog({
       <div className="modal-header">
         <span className="page-eyebrow">
           <BookOpen size={17} />
-          SAMPLE SOURCE
+          {source?.sample === false ? "POLICY SOURCE" : "SAMPLE SOURCE"}
         </span>
         <button
           className="icon-button"
@@ -40,12 +40,16 @@ export function SourceDialog({
         <>
           <h2 id="source-title">{source.title}</h2>
           <p className="source-meta">
-            {source.version} · {source.section} · Fictional policy excerpt
+            {source.version} · {source.section} ·{" "}
+            {source.sample === false
+              ? "Company policy excerpt"
+              : "Fictional policy excerpt"}
           </p>
           <blockquote>{source.excerpt}</blockquote>
           <div className="information-note">
-            This sample has not been verified against any company’s current
-            policy. It does not confirm that a specific food is safe.
+            {source.sample === false
+              ? "This excerpt was retrieved from the current approved policy catalog. Confirm the situation-specific facts and follow your workplace procedure."
+              : "This fictional sample cannot verify company procedures or confirm that a specific food is safe."}
           </div>
         </>
       )}

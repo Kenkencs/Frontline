@@ -51,9 +51,13 @@ test("real HTTP produces a sourced high-risk card for every allowed demo pair", 
     if (reply.type !== "action") assert.fail("Expected an action card");
     assert.equal(reply.risk, "high");
     assert.equal(reply.escalate, true);
-    assert.equal(reply.actions.length, 4);
+    assert.equal(reply.confidence, "low");
+    assert.ok(reply.actions.some((action) => /fictional samples/.test(action)));
     assert.ok(
-      reply.sources.every((source) => source.version && source.excerpt),
+      reply.sources.length > 0 &&
+        reply.sources.every(
+          (source) => source.version && source.excerpt && source.sample,
+        ),
     );
   }
 });
@@ -67,7 +71,7 @@ test("opening shift returns an ordinary message over HTTP", async () => {
   assert.equal(response.status, 200);
   const reply = parseChatResponse(await response.json());
   assert.equal(reply.type, "message");
-  assert.equal(reply.sources[0].id, "opening-1-1");
+  assert.equal(reply.sources[0].id, "opening-checklist:1:opening");
 });
 
 test("invalid fields and mismatched provider/model pairs are rejected", async () => {
