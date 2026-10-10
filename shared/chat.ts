@@ -1,0 +1,37 @@
+// This contract is shared by the UI and the future POST /api/chat endpoint.
+export type ProviderId = "openai" | "anthropic" | "deepseek" | "kimi";
+export type EmployeeRole = "waiter" | "cashier" | "kitchen_staff";
+export type RiskLevel = "low" | "medium" | "high";
+
+export interface ChatRequest {
+  message: string;
+  employee_role: EmployeeRole;
+  provider: ProviderId;
+  model: string;
+}
+
+export interface Source {
+  id: string;
+  title: string;
+  version: string;
+  section: string;
+  excerpt: string;
+}
+
+export interface ActionResponse {
+  type: "action";
+  risk: RiskLevel;
+  summary: string;
+  actions: string[];
+  sources: Source[];
+  confidence: "low" | "medium" | "high";
+  escalate: boolean;
+}
+
+export type ChatResponse =
+  | ActionResponse
+  | {
+      type: "message";
+      content: string;
+      sources: Source[];
+    };
