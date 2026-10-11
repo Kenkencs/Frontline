@@ -1,5 +1,6 @@
 import type { EmployeeRole } from "../../shared/chat";
 import type { KnowledgeDocument } from "./types";
+import { roleDocuments } from "./roleDocuments";
 
 // Fictional examples only. Replace content and approval/version metadata with
 // verified company documents before setting sample: false. Edit this file to add SOPs.
@@ -127,4 +128,5 @@ export const knowledgeDocuments: KnowledgeDocument[] = [
       ],
     },
   ]),
+  ...roleDocuments,
 ];

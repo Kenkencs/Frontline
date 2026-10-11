@@ -13,6 +13,8 @@ export interface KnowledgeDocument {
   sections: {
     id: string;
     section: string;
+    question?: string; // Optional FAQ prompt shown in the Knowledge Base.
+    category?: string; // Small topic label for browsing; retrieval uses keywords.
     excerpt: string;
     keywords: string[];
   }[];

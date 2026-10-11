@@ -7,6 +7,11 @@ import { models } from "../shared/catalog";
 import { roles } from "../shared/catalog";
 import type { KnowledgeDocument } from "./knowledge/types";
 import { getCurrentDocuments } from "./knowledge/retrieve";
+import { knowledgeDocuments } from "./knowledge/documents";
+import { getFaqCatalog, getPublishedFaqDocuments } from "./faq/knowledge";
+import { handleQuestionRequest } from "./faq/questions";
+import type { FaqStore } from "./faq/store";
+import { getManagerContact } from "./workplace";
 import { runMainAgent } from "./agents/mainAgent";
 import { ProviderError } from "./providers/AIProvider";
 import { createProvider, type ProviderConfig } from "./providers/registry";
@@ -14,7 +19,19 @@ import { createProvider, type ProviderConfig } from "./providers/registry";
 export type ApiOptions = ProviderConfig & {
   documents?: KnowledgeDocument[];
   now?: Date;
+  faqStore?: FaqStore;
 };
+
+async function availableDocuments(
+  options: ApiOptions,
+): Promise<KnowledgeDocument[]> {
+  return [
+    ...(options.documents ?? knowledgeDocuments),
+    ...(options.faqStore
+      ? await getPublishedFaqDocuments(options.faqStore, options.now)
+      : []),
+  ];
+}
 
 export function jsonResponse(
   value: unknown,
@@ -67,36 +84,59 @@ export async function handleApiRequest(
   options: ApiOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url);
-  if (url.pathname === "/api/knowledge") {
+  if (url.pathname === "/api/workplace") {
+    return request.method === "GET"
+      ? jsonResponse(getManagerContact())
+      : jsonResponse({ error: "Use GET /api/workplace." }, 405, {
+          Allow: "GET",
+        });
+  }
+  if (
+    url.pathname === "/api/questions" ||
+    url.pathname.startsWith("/api/questions/")
+  )
+    return handleQuestionRequest(request, options.faqStore, options.now);
+  if (url.pathname === "/api/knowledge" || url.pathname === "/api/faq") {
     if (request.method !== "GET")
-      return jsonResponse({ error: "Use GET /api/knowledge." }, 405, {
+      return jsonResponse({ error: `Use GET ${url.pathname}.` }, 405, {
         Allow: "GET",
       });
     const requestedRole = url.searchParams.get("employee_role");
     const role = roles.find((item) => item.id === requestedRole);
-    if (requestedRole && !role)
+    if ((requestedRole || url.pathname === "/api/faq") && !role)
       return jsonResponse({ error: "Choose a supported employee role." }, 400);
-    const documents = getCurrentDocuments(
-      options.documents,
-      options.now,
-      role?.id,
-    ).map((doc) => ({
-      documentId: doc.documentId,
-      revision: doc.revision,
-      title: doc.title,
-      version: doc.version,
-      effectiveFrom: doc.effectiveFrom,
-      reviewBy: doc.reviewBy,
-      sample: doc.sample,
-      sections: doc.sections.map((section) => ({
-        id: `${encodeURIComponent(doc.documentId)}:${doc.revision}:${encodeURIComponent(section.id)}`,
+    let available: KnowledgeDocument[];
+    try {
+      available = await availableDocuments(options);
+    } catch {
+      return jsonResponse(
+        { error: "Could not load current knowledge. Please retry." },
+        503,
+      );
+    }
+    if (url.pathname === "/api/faq")
+      return jsonResponse(getFaqCatalog(available, role!.id, options.now));
+    const documents = getCurrentDocuments(available, options.now, role?.id).map(
+      (doc) => ({
+        documentId: doc.documentId,
+        revision: doc.revision,
         title: doc.title,
         version: doc.version,
-        section: section.section,
-        excerpt: section.excerpt,
+        effectiveFrom: doc.effectiveFrom,
+        reviewBy: doc.reviewBy,
         sample: doc.sample,
-      })),
-    }));
+        sections: doc.sections.map((section) => ({
+          id: `${encodeURIComponent(doc.documentId)}:${doc.revision}:${encodeURIComponent(section.id)}`,
+          title: doc.title,
+          version: doc.version,
+          section: section.section,
+          excerpt: section.excerpt,
+          sample: doc.sample,
+          ...(section.question ? { question: section.question } : {}),
+          ...(section.category ? { category: section.category } : {}),
+        })),
+      }),
+    );
     return jsonResponse({
       documents,
       mode: !documents.length
@@ -151,7 +191,7 @@ export async function handleApiRequest(
       ...(selection.mode === "live"
         ? { provider: createProvider(input.provider, options) }
         : {}),
-      documents: options.documents,
+      documents: await availableDocuments(options),
       now: options.now,
     });
     return jsonResponse(parseChatResponse(response));

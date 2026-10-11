@@ -2,6 +2,9 @@ import { FileText, MessageSquare, UserRound } from "lucide-react";
 import type { EmployeeRole, Source } from "../../shared/chat";
 import type { EscalationDraft, View } from "../types";
 import { KnowledgePage } from "./KnowledgePage";
+import { FaqPage } from "./FaqPage";
+import { QuestionReview } from "./QuestionReview";
+import { ManagerContact } from "./ManagerContact";
 import { models, roles } from "../data/models";
 
 interface Props {
@@ -14,6 +17,8 @@ interface Props {
   onRole: (role: EmployeeRole) => void;
   onModel: (index: number) => void;
   onBack: () => void;
+  onAsk: (question: string) => void;
+  reviewPrefill: string;
 }
 
 export function WorkspacePages({
@@ -26,9 +31,19 @@ export function WorkspacePages({
   onRole,
   onModel,
   onBack,
+  onAsk,
+  reviewPrefill,
 }: Props) {
   return (
     <div className="secondary-page">
+      {view === "faq" && (
+        <FaqPage
+          role={role}
+          onSource={onSource}
+          onAsk={onAsk}
+          initialQuestion={reviewPrefill}
+        />
+      )}
       {view === "knowledge" && (
         <KnowledgePage role={role} onSource={onSource} />
       )}
@@ -38,6 +53,8 @@ export function WorkspacePages({
             <UserRound size={18} /> MANAGER WORKSPACE
           </div>
           <h1>Manager Dashboard</h1>
+          <QuestionReview />
+          <h2 className="drafts-heading">Escalation drafts</h2>
           <p className="page-description">
             Escalation drafts from this session.
           </p>
@@ -69,7 +86,9 @@ export function WorkspacePages({
             <div className="secondary-empty">
               <MessageSquare size={30} />
               <h2>No escalation drafts yet</h2>
-              <p>Use “Ask Manager” on an Action Card to prepare a draft.</p>
+              <p>
+                Use “Prepare handover” on an Action Card to prepare a draft.
+              </p>
               <button className="button secondary" onClick={() => onBack()}>
                 Back to conversation
               </button>
@@ -127,6 +146,11 @@ export function WorkspacePages({
             API keys belong on the backend. This frontend has no API key fields
             or provider connections.
           </div>
+          <h2>Emergency contact</h2>
+          <p className="page-description">
+            View the manager connection available for this workplace.
+          </p>
+          <ManagerContact />
         </>
       )}
     </div>

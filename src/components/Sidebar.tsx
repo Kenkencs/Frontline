@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CircleHelp,
   LayoutGrid,
   MessageSquare,
   Plus,
@@ -31,6 +32,7 @@ export function Sidebar({
   onView,
 }: Props) {
   const navigation = [
+    { id: "faq" as const, label: "FAQs", icon: CircleHelp },
     { id: "knowledge" as const, label: "Knowledge Base", icon: BookOpen },
     { id: "manager" as const, label: "Manager Dashboard", icon: LayoutGrid },
     { id: "settings" as const, label: "Settings", icon: Settings },

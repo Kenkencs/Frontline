@@ -1,8 +1,8 @@
 # Current MVP status
 
-The `1.0.0` source implements all seven requested increments. **95 tests pass**, TypeScript passes, and the React/Worker production build passes. The complete demo uses local retrieval, version checks, and risk assessment without paid AI. Real provider responses and streams remain unverified; the earlier OpenAI connection timed out and other provider keys are unconfigured. The published Site remains on increment 2; later source versions are saved privately without deployment. Secure hosted-secret setup is pending.
+The `1.1.0` source adds role-specific FAQs, persistent question review, reuse in retrieval, and an emergency manager-contact panel. **132 tests pass**, including actual SQLite and Worker D1-adapter integration. Version 6 of the original demo was published privately and the owner verified its allergy flow on 11 October 2026. The new release's publication receipt is maintained beside the source in `frontline-deployment.md`.
 
-The increment records below are historical. The final record at the end supersedes their statements about deferred code.
+The records below are historical. The latest 1.1.0 section supersedes earlier statements about deferred code, storage, and deployment. Live providers remain unverified and hosted API keys remain unconfigured.
 
 # Increment 1 verification
 
@@ -118,3 +118,19 @@ Checked on 10 October 2026:
 No key was created, plaintext secret exposed, or paid AI call made in this final increment. Real provider compatibility/account access, the OpenAI network timeout, other provider credentials, secure hosted-secret handoff, and a new deployment remain unverified or pending. The final private checkpoint's version/commit are reported in the handoff after saving succeeds.
 
 All default policies are fictional. Replace them with approved company documents before workplace use; the application trusts maintained approval/version metadata rather than independently verifying approval. Conversations/drafts reset on reload, the role selector is context rather than authentication, and no manager notification is sent. README and ARCHITECTURE explain these limits and how to modify the code.
+
+# FAQ and emergency-contact release 1.1.0
+
+Checked on 11 October 2026:
+
+- All **132 tests passed**, including 36 role-FAQ retrieval/isolation scenarios; real SQLite persistence, restart, review conflicts, role/expiry filtering; D1 adapter and Worker binding; input/client validation; and existing provider/risk regressions. No real provider call was made.
+- TypeScript and production React/Worker builds pass. One generated table migration is packaged for hosted D1. Local `.data` records and `.env` are ignored and excluded from deployment.
+- Browser checks confirmed 12 distinct questions per role, cashier receipt search, source-backed answers, and Ask this question prefilling a fresh chat.
+- A local Kitchen Staff question was submitted, reviewed with an answer and reference, published, shown in the Knowledge Base, found after a page reload, and cited by a subsequent demo chat. Local test content is not shipped to hosted storage.
+- Browser QA found and fixed local Vite proxy origin rewriting. Explicit `changeOrigin: false` and the Node adapter's validated loopback Host preserve the browser origin. A regression test covers accepted local origins, rejected cross-origins, and rejected non-loopback hosts.
+- A 390px-wide browser check showed the FAQ search, category control, and cards wrapping without horizontal overflow; desktop source/FAQ screens were also inspected. This was not an exhaustive device or accessibility audit.
+- The high-risk manager panel displays the supplied fake contact details, disabled call/link controls, and an immediate-danger reminder. No call or external contact was attempted.
+- Reviewed answers stay sample evidence. Source references are manager-entered and unverified. Review is an owner-private demonstration, not authenticated employee/manager access control.
+- Dependencies added for migration generation reported four moderate development-tool advisories during installation. No forced major-version dependency changes were applied; no Drizzle code is imported by the deployed Worker.
+
+Production end-to-end UI verification is separate from local checks and the native deployment receipt. Earlier automated requests to the private production site were blocked at its edge, while the owner verified version 6. Real model responses, real company policies, and actual manager delivery are outside this demo's verified behavior.

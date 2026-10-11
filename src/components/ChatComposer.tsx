@@ -1,23 +1,49 @@
 import { SendHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
-const suggestions = [
-  "A customer has a food allergy",
-  "Opening shift checklist",
-  "Handling a customer complaint",
-];
+import type { EmployeeRole } from "../../shared/chat";
+import { getFaq } from "../services/faqClient";
+import { roles } from "../data/models";
 
 export function ChatComposer({
   sending,
   onSend,
   mode,
+  role,
+  initialQuestion,
+  onBrowseFaq,
 }: {
   sending: boolean;
   onSend: (message: string) => Promise<void>;
   mode: "demo" | "live";
+  role: EmployeeRole;
+  initialQuestion: string;
+  onBrowseFaq: () => void;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialQuestion);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestionOffset, setSuggestionOffset] = useState(0);
   const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10_000);
+    setSuggestions([]);
+    setSuggestionOffset(0);
+    void getFaq(role, controller.signal)
+      .then((value) => {
+        if (active && !controller.signal.aborted)
+          setSuggestions(value.faqs.map((faq) => faq.question));
+      })
+      .catch(() => {
+        /* The composer stays usable when FAQ suggestions are unavailable. */
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      active = false;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [role]);
   useEffect(() => {
     if (input.current) {
       input.current.style.height = "auto";
@@ -33,19 +59,36 @@ export function ChatComposer({
   };
   return (
     <div className="composer-area">
+      <div className="suggestion-heading">
+        <span>For {roles.find((item) => item.id === role)?.label}</span>
+        <div>
+          {suggestions.length > 3 && (
+            <button
+              onClick={() =>
+                setSuggestionOffset((value) => (value + 3) % suggestions.length)
+              }
+            >
+              More questions
+            </button>
+          )}
+          <button onClick={onBrowseFaq}>Browse FAQs</button>
+        </div>
+      </div>
       <div className="suggestion-row">
-        {suggestions.map((suggestion) => (
-          <button
-            disabled={sending}
-            key={suggestion}
-            onClick={() => {
-              setText(suggestion);
-              input.current?.focus();
-            }}
-          >
-            {suggestion}
-          </button>
-        ))}
+        {suggestions
+          .slice(suggestionOffset, suggestionOffset + 3)
+          .map((suggestion) => (
+            <button
+              disabled={sending}
+              key={suggestion}
+              onClick={() => {
+                setText(suggestion);
+                input.current?.focus();
+              }}
+            >
+              {suggestion}
+            </button>
+          ))}
       </div>
       <form
         className="composer"

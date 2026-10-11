@@ -29,7 +29,15 @@ export async function getKnowledge(
         typeof doc.reviewBy === "string" &&
         typeof doc.sample === "boolean" &&
         Array.isArray(doc.sections) &&
-        doc.sections.every(isSource),
+        doc.sections.every(
+          (section) =>
+            isSource(section) &&
+            isRecord(section) &&
+            (section.question === undefined ||
+              typeof section.question === "string") &&
+            (section.category === undefined ||
+              typeof section.category === "string"),
+        ),
     )
   )
     throw new Error("The server returned an invalid knowledge catalog.");

@@ -72,6 +72,68 @@ test("possible emergency symptoms add immediate procedure and emergency-help act
   }
 });
 
+test("violence, robbery and threatening weapons require emergency help with sample or missing knowledge", () => {
+  for (const knowledge of [sample, missing]) {
+    for (const question of [
+      "Someone is trying to rob us at the till.",
+      "There is an armed robbery in the shop.",
+      "A customer is attacking a worker.",
+      "A physical fight has broken out and people are fighting.",
+      "A person has a gun and is demanding money.",
+      "Someone is threatening customers with a knife.",
+      "A customer pulled a knife and demanded cash.",
+      "Someone threatens to hurt the staff.",
+      "店內有人搶劫，持槍威脅員工。",
+      "有人拿着刀威胁顾客。",
+      "有人殴打员工，威胁伤害其他人。",
+    ]) {
+      const result = assessRisk(question, knowledge);
+      assert.equal(result.risk, "high", question);
+      assert.equal(result.escalate, true);
+      assert.equal(result.requiresAction, true);
+      assert.equal(result.confidence, "low");
+      assert.match(result.reason, /Possible immediate danger/);
+      assert.match(
+        result.requiredActions[0],
+        /workplace emergency procedure.*local emergency services/,
+      );
+      assert.match(
+        result.requiredActions[1],
+        /Alert the manager immediately.*Do not delay emergency help/,
+      );
+      assert.ok(
+        result.requiredActions.includes(
+          "Do not confront the person or attempt to intervene.",
+        ),
+      );
+    }
+  }
+});
+
+test("immediate danger takes priority over allergy while retaining allergen precautions", () => {
+  for (const question of [
+    "The customer has a peanut allergy and cannot breathe.",
+    "An armed robber is threatening a customer who reported a peanut allergy.",
+  ]) {
+    const result = assessRisk(question, sample);
+    assert.match(result.reason, /^Possible immediate danger/);
+    assert.equal(result.risk, "high");
+    assert.equal(result.escalate, true);
+    assert.equal(result.requiresAction, true);
+    assert.match(result.requiredActions[0], /local emergency services/);
+    assert.ok(
+      result.requiredActions.includes("Do not confirm that the food is safe."),
+    );
+    assert.ok(
+      result.requiredActions.includes("Check the latest allergen information."),
+    );
+    assert.ok(
+      result.requiredActions.includes("Check cross-contamination information."),
+    );
+    assert.ok(result.requiredActions.length <= 8);
+  }
+});
+
 test("operational hazards remain high risk even when a source claims safety", () => {
   const misleading = {
     ...company,

@@ -8,7 +8,7 @@ export interface KnowledgePolicy {
   effectiveFrom: string;
   reviewBy: string;
   sample: boolean;
-  sections: Source[];
+  sections: (Source & { question?: string; category?: string })[];
 }
 
 export interface KnowledgeCatalog {

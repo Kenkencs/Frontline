@@ -1163,3 +1163,115 @@ button {
     animation: none !important;
   }
 }
+
+/* FAQ entry points and emergency contact keep the conversation the focus. */
+a.button {
+  text-decoration: none;
+}
+.urgent-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  margin: 20px 0 8px;
+  border: 1px solid #f4d5cd;
+  border-radius: 12px;
+  background: #fff8f5;
+}
+.urgent-contact strong {
+  font-size: 0.88rem;
+}
+.urgent-contact p {
+  margin: 5px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #77584e;
+}
+.button.urgent-button {
+  background: #9e392c;
+  color: #fff;
+  border: 1px solid #9e392c;
+  flex-shrink: 0;
+}
+.contact-emergency {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: #813d32;
+}
+.contact-details {
+  padding: 18px 0;
+}
+.contact-details p {
+  margin: 9px 0;
+  overflow-wrap: anywhere;
+}
+.suggestion-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 9px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.suggestion-heading button {
+  border: 0;
+  background: none;
+  color: #4963a5;
+  padding: 4px 0 4px 12px;
+  font-size: 0.75rem;
+}
+.suggestion-row button {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.45;
+}
+.knowledge-search {
+  display: grid;
+  gap: 8px;
+  margin: 24px 0;
+  color: #536071;
+  font-size: 0.85rem;
+}
+.knowledge-search input {
+  padding: 12px 14px;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.knowledge-search input:focus-visible,
+a.button:focus-visible {
+  outline: 3px solid #91a8ff;
+  outline-offset: 3px;
+}
+.drafts-heading {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .urgent-contact {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .urgent-contact .button {
+    width: 100%;
+    justify-content: center;
+  }
+  .suggestion-row {
+    max-height: 110px;
+    overflow: auto;
+  }
+}
+.review-question-link {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 10px 0;
+  color: #4963a5;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

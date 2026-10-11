@@ -1,6 +1,6 @@
 import type { ChatResponse, ChatRequest } from "../shared/chat";
 
-export type View = "chat" | "knowledge" | "manager" | "settings";
+export type View = "chat" | "faq" | "knowledge" | "manager" | "settings";
 export type ChatMessage =
   | { id: string; author: "worker"; text: string }
   | {

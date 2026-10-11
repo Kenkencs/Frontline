@@ -1,4 +1,5 @@
 import { handleApiRequest } from "./api";
+import { createD1FaqStore, type FaqD1Database } from "./faq/store";
 
 interface WorkerEnvironment {
   ASSETS: { fetch(request: Request): Promise<Response> };
@@ -6,6 +7,7 @@ interface WorkerEnvironment {
   ANTHROPIC_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
   KIMI_API_KEY?: string;
+  DB?: FaqD1Database;
 }
 
 export default {
@@ -13,6 +15,7 @@ export default {
     const path = new URL(request.url).pathname;
     if (path === "/api" || path.startsWith("/api/"))
       return handleApiRequest(request, {
+        faqStore: env.DB ? createD1FaqStore(env.DB) : undefined,
         apiKeys: {
           openai: env.OPENAI_API_KEY,
           anthropic: env.ANTHROPIC_API_KEY,

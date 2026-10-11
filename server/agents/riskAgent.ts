@@ -16,6 +16,8 @@ const allergy =
   /\b(allerg\w*|peanuts?|nuts?|anaphyla\w*)\b|花生|過敏|过敏|堅果|坚果/i;
 const emergency =
   /\b(shortness of breath|trouble breathing|difficulty breathing|cannot breathe|can.?t breathe|wheez\w*|chok\w*|unconscious|collaps\w*|faint\w*|severe bleeding|throat swelling|swollen throat)\b|喘|呼吸困難|呼吸困难|不能呼吸|窒息|昏迷|暈倒|晕倒|大量出血/i;
+const violenceOrRobbery =
+  /\b(rob|robbery|robbed|robber\w*|violent|violence|assault\w*|attacking|attacked|fighting|gun\w*|firearm\w*|weapon\w*)\b|\b(threat\w*|point\w*|brandish\w*|pull\w*)\b.*\b(knife|knives)\b|\b(knife|knives)\b.*\b(threat\w*|attack\w*|brandish\w*)\b|\b(threat\w*)\b.*\b(hurt|harm|kill|shoot|stab)\b|搶劫|抢劫|打劫|劫持|暴力|毆打|殴打|襲擊|袭击|持槍|持枪|槍支|枪支|武器|(?:威脅|威胁).*刀|刀.*(?:威脅|威胁|傷害|伤害|攻擊|攻击)|(?:威脅|威胁).*(?:傷害|伤害|殺|杀)/i;
 const hazard =
   /\b(injur\w*|bleed\w*|burn\w*|fire|smoke|gas|chemical\w*|poison\w*|electric shock|food safety|unsafe food|food poisoning|cross[- ]?contamination|spoil\w*|mould\w*|mold\w*|undercooked|raw chicken)\b|受傷|受伤|流血|出血|燒傷|烧伤|火災|火灾|燃氣|燃气|煤氣|煤气|化學|化学|中毒|電擊|电击|食品安全|食物安全|交叉污染|變質|变质|未煮熟/i;
 const moneyOrComplaint =
@@ -30,7 +32,8 @@ export function assessRisk(
   knowledge: KnowledgeResult,
 ): RiskAssessment {
   const hasAllergy = allergy.test(message);
-  const hasEmergency = emergency.test(message);
+  const hasViolence = violenceOrRobbery.test(message);
+  const hasEmergency = emergency.test(message) || hasViolence;
   const hasHazard = hazard.test(message);
   const foodDecision = foodSafetyDecision.test(message);
   const permissionDecision = policyDecision.test(message);
@@ -47,10 +50,10 @@ export function assessRisk(
 
   if (hasAllergy || hasEmergency || hasHazard || foodDecision) {
     risk = "high";
-    reason = hasAllergy
-      ? "Possible allergy case; food safety must be verified with the manager."
-      : hasEmergency
-        ? "Possible immediate danger; follow the workplace emergency procedure."
+    reason = hasEmergency
+      ? "Possible immediate danger; follow the workplace emergency procedure."
+      : hasAllergy
+        ? "Possible allergy case; food safety must be verified with the manager."
         : foodDecision
           ? "Food safety cannot be confirmed from a policy match; verify the exact product with the manager."
           : "Possible safety hazard; stop the unsafe activity and get manager help.";
@@ -60,6 +63,11 @@ export function assessRisk(
         "Alert the manager immediately. Do not delay emergency help while checking documents.",
       );
     }
+    if (hasViolence) {
+      requiredActions.push(
+        "Do not confront the person or attempt to intervene.",
+      );
+    }
     if (hasAllergy || foodDecision) {
       requiredActions.push(
         "Do not confirm that the food is safe.",
@@ -67,7 +75,7 @@ export function assessRisk(
         "Check cross-contamination information.",
         "Ask the manager if safety cannot be verified.",
       );
-    } else if (hasHazard) {
+    } else if (hasHazard && !hasViolence) {
       requiredActions.push(
         "Stop the unsafe activity and follow the current workplace safety procedure.",
         "Keep people away from the hazard where it is safe to do so.",

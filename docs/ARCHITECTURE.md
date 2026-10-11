@@ -25,15 +25,15 @@ These are three ordinary modules, not three autonomous model conversations. `ser
 
 ## Incremental status
 
-| Increment                       | Source implementation                                                 | Live/deployment status                                        |
-| ------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------- |
-| 1. Frontend, demo, Action Cards | Complete; new demo sends now use the real local agent pipeline        | Does not need a provider                                      |
-| 2. Common backend API           | Complete; Node and Worker share one handler                           | Existing Site publication predates these later source changes |
-| 3. One OpenAI provider          | Implemented                                                           | Earlier connection timed out; real output unverified          |
-| 4. Provider abstraction         | Implemented                                                           | Independent of connectivity and secret configuration          |
-| 5. Other providers              | Claude, DeepSeek, and Kimi implemented                                | Their keys are not configured; real output unverified         |
-| 6. Knowledge Agent / RAG        | Local lexical retrieval and policy-version checks implemented         | Default documents are fictional samples                       |
-| 7. Risk Agent                   | Rule-based operational assessment and common final guards implemented | Rules are a limited classifier, not a safety certification    |
+| Increment                       | Source implementation                                                 | Live/deployment status                                             |
+| ------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 1. Frontend, demo, Action Cards | Complete; new demo sends now use the real local agent pipeline        | Does not need a provider                                           |
+| 2. Common backend API           | Complete; Node and Worker share one handler                           | Version 6 demo published; see deployment receipt for later updates |
+| 3. One OpenAI provider          | Implemented                                                           | Earlier connection timed out; real output unverified               |
+| 4. Provider abstraction         | Implemented                                                           | Independent of connectivity and secret configuration               |
+| 5. Other providers              | Claude, DeepSeek, and Kimi implemented                                | Their keys are not configured; real output unverified              |
+| 6. Knowledge Agent / RAG        | Local lexical retrieval and policy-version checks implemented         | Default documents are fictional samples                            |
+| 7. Risk Agent                   | Rule-based operational assessment and common final guards implemented | Rules are a limited classifier, not a safety certification         |
 
 All four adapters also implement provider text streaming. `/api/chat` uses completed structured generation, not streaming. Source implementation and fake-response tests do not establish live API compatibility, real policy approval, or a new deployment. See [VERIFICATION.md](VERIFICATION.md) for actual checks and receipts.
 
@@ -64,6 +64,34 @@ Hosted: React assets → /api routes → Worker     ┘
 This is lexical RAG: retrieved context is supplied to live generation. It can miss synonyms or unsupported languages; no match becomes missing evidence. The Risk Agent can still detect a hazard when retrieval misses its wording.
 
 `KnowledgeResult` returns sources, used-document metadata, a `missing` flag, and `mode: "sample" | "company" | "none"`. Company mode requires every selected document to have explicit `sample: false`; mixed evidence is conservatively sample. Marking a record approved/company is maintained project data, not proof of an approval process. The [README](../README.md#replace-the-sample-knowledge) explains how to replace documents without reviving old policy.
+
+## FAQ persistence feeds the existing Knowledge Agent
+
+```text
+Worker submits question → faq_questions (pending)
+                          ↓ manager review
+                  published answer + reference + review date
+                          ↓
+                 current role-filtered KnowledgeDocument
+                       ↙             ↘
+             FAQ / Knowledge Base     chat retrieval
+```
+
+`server/faq/questions.ts` validates HTTP input and calls the `FaqStore` interface. `SqlFaqStore` uses parameterized INSERT/SELECT/UPDATE statements. Node's SQLite adapter and the Worker's D1 adapter execute the same SQL. Conditional updates only accept pending records, preventing two decisions from overwriting each other. Errors are sanitized; the client reports success only after validating a matching persisted receipt.
+
+`db/schema.ts` defines one table. Drizzle generates schema-only SQL and journal metadata. Local startup applies new migrations to `.data/frontline.sqlite`; Sites applies packaged migrations to hosted D1 before Worker publication. Neither adapter creates tables during requests. Local test records are ignored by Git and never uploaded. Lists have a 500-record cap per requested status; published retrieval is filtered before the cap.
+
+The 36 built-in FAQ sections live in `roleDocuments.ts`, 12 per role. Optional `question` and `category` fields let `GET /api/faq` reuse the same source records as `GET /api/knowledge` and chat. Common SOP sections remain in knowledge retrieval without being turned into artificial FAQ questions.
+
+`getPublishedFaqDocuments()` turns reviewed records into current sample documents with stable IDs, role tags, exact answers, unverified manager-entered references, and review dates. Pending/rejected/overdue records never enter retrieval. No raw question or AI answer becomes approved company evidence automatically. The original Knowledge Agent still performs version/role selection and keyword matching; there is no extra agent, embedding job, or vector service.
+
+The interface adds searchable FAQs, an explicit submission form, and a manager review section. The owner-private prototype allows its owner to exercise both flows. There is no authenticated manager role. Add server-side identity and review permissions before expanding its audience to workers.
+
+## Emergency manager contact
+
+`server/workplace.ts` exposes only public contact fields through `GET /api/workplace`. `ManagerContact.tsx` opens a native dialog from high-risk cards, other escalated cards, or Settings. Fake phone `123456` and fake label `HIGH_RISK_FAST.com` use `demo: true`; both links are disabled. Real mode allows a validated telephone link and/or HTTPS contact destination. Clicking an enabled link opens the user's phone/contact app; it is not an acknowledgement from a manager. Existing handover drafts remain a separate, explicitly unsent note.
+
+Recognized violence, robbery, or threatening weapon scenarios now enter the emergency floor. Immediate danger takes precedence in summaries, with emergency procedure/help first and no confrontation or intervention. The classifier remains intentionally limited.
 
 ## Risk Agent and application-owned actions
 
@@ -121,4 +149,4 @@ An OpenAI key was created through the approved secure workflow and saved locally
 
 Live validation and secure hosted-secret handoff are still separate pending work. A local source checkpoint does not publish the MVP or activate its live models. The hosted build keeps the existing private Site audience and Worker/assets structure; consult verification receipts for what is actually published.
 
-The student MVP intentionally uses session-only history, read-only backend document data, and copy/save manager drafts. It has no document uploads, authenticated employee/company access, database, real notifications, or streaming chat UI. The role dropdown is context, not authorization. Introducing those features would require a separate, explicit scope decision; the current 1+2 module structure does not require them.
+The student MVP uses session-only history and handover drafts, source-controlled SOPs, and one persistent FAQ table. It has no document uploads, authenticated employee/manager separation, real notifications, or streaming chat UI. The role dropdown is context, not authorization. The owner-private audience must remain the boundary until actual manager permissions are implemented.

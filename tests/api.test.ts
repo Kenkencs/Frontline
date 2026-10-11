@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { once } from "node:events";
+import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createApiServer } from "../server/nodeServer";
 import { handleApiRequest } from "../server/api";
@@ -36,6 +37,42 @@ function post(value: unknown) {
     body: JSON.stringify(value),
   });
 }
+
+test("local HTTP preserves the browser origin for FAQ writes and rejects other origins", async () => {
+  const request = (headerOrigin: string, host?: string) =>
+    new Promise<number>((resolve, reject) => {
+      const outgoing = httpRequest(
+        origin + "/api/questions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Origin: headerOrigin,
+            ...(host ? { Host: host } : {}),
+          },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode!));
+        },
+      );
+      outgoing.on("error", reject);
+      outgoing.end(
+        JSON.stringify({
+          question: "Where is the shift notebook?",
+          employee_role: "waiter",
+        }),
+      );
+    });
+  // This fixture intentionally has no store. 503 proves the same-origin check passed.
+  assert.equal(await request(origin), 503);
+  assert.equal(await request("https://untrusted.example"), 403);
+  assert.equal(await request("http://127.0.0.1:4173", "127.0.0.1:4173"), 503);
+  assert.equal(
+    await request("https://untrusted.example", "untrusted.example"),
+    400,
+  );
+});
 
 test("real HTTP produces a sourced high-risk card for every allowed demo pair", async () => {
   for (const model of models.filter((item) => item.mode === "demo")) {

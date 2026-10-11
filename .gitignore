@@ -6,3 +6,5 @@ dist/
 .sites-runtime/
 .DS_Store
 *.log
+.data/
+.wrangler/

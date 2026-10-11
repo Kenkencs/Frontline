@@ -99,6 +99,8 @@ export default function App() {
   const [draftText, setDraftText] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<EscalationDraft[]>([]);
   const [notice, setNotice] = useState("");
+  const [prefill, setPrefill] = useState("");
+  const [reviewPrefill, setReviewPrefill] = useState("");
   const pendingRef = useRef(new Set<string>());
   const scrollArea = useRef<HTMLDivElement>(null);
   const lastScrollState = useRef("allergy-example:2:false:chat");
@@ -120,10 +122,12 @@ export default function App() {
   }, [notice]);
 
   const changeView = (next: View) => {
+    if (next !== "faq") setReviewPrefill("");
     setView(next);
     setSidebarOpen(false);
   };
   const newConversation = () => {
+    setPrefill("");
     const id = crypto.randomUUID();
     setConversations((items) => [
       { id, title: "New conversation", messages: [] },
@@ -310,6 +314,18 @@ export default function App() {
                                 />
                               </>
                             )}
+                            {!message.response.sources.length && (
+                              <button
+                                className="review-question-link"
+                                onClick={() => {
+                                  setRole(message.request.employee_role);
+                                  setReviewPrefill(message.request.message);
+                                  changeView("faq");
+                                }}
+                              >
+                                Request a reviewed FAQ answer
+                              </button>
+                            )}
                           </div>
                         ),
                       )}
@@ -342,6 +358,9 @@ export default function App() {
               sending={sending}
               mode={model.mode}
               onSend={submitMessage}
+              role={role}
+              initialQuestion={prefill}
+              onBrowseFaq={() => changeView("faq")}
             />
           </>
         ) : (
@@ -355,6 +374,11 @@ export default function App() {
             onRole={setRole}
             onModel={setModelIndex}
             onBack={() => changeView("chat")}
+            reviewPrefill={reviewPrefill}
+            onAsk={(question) => {
+              newConversation();
+              setPrefill(question);
+            }}
           />
         )}
       </main>

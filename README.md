@@ -6,7 +6,7 @@ The complete demo flow works without a key or paid AI call. Live provider adapte
 
 ## Run it
 
-Use Node.js 22.12+ or a current supported LTS release.
+Use Node.js 24 LTS. Local FAQ persistence uses the built-in `node:sqlite` module.
 
 ```sh
 npm install
@@ -35,9 +35,29 @@ Select any model labeled **demo**, then try:
 
 Demo sends use the same Knowledge Agent, Risk Agent, and final validation as live sends. Only the synthesis differs: demo mode composes the answer locally; live mode asks the selected provider for structured output. Demo models never call a provider, even if backend keys exist. Initial example conversations are static fictional fixtures; every new send uses the backend pipeline.
 
-**Knowledge Base** loads the backend's current approved catalog for the selected role. **View Source** displays the exact retrieved excerpt and its sample/company label. **Ask Manager** lets you edit or copy a note, or save a session draft to Manager Dashboard; nothing is sent to another person.
+**FAQs** contains 36 fictional questions: 12 each for Cashier, Waiter, and Kitchen Staff. Search or filter by category, open a source, or send a question into a new chat. **Knowledge Base** contains the same role-specific sections alongside the common SOPs. **View Source** displays the exact excerpt. **Prepare handover** creates an editable session draft. **Contact Manager** opens a contact panel; the supplied fake details are visibly disabled.
 
 Conversations and drafts live in React memory and reset on reload. Only the current question is sent, so visible history is not model memory. Failed live requests stay visible and never become demo answers or switch providers. Retry keeps the original role, model, and question without duplicating the worker message.
+
+## FAQ review and reusable knowledge (1.1.0)
+
+1. A worker submits a question from FAQs. Questions without a retrieved source also offer **Request a reviewed FAQ answer** in chat. The form lets the worker edit the question before saving it.
+2. **Manager Dashboard → Pending** lists saved questions. Enter an answer, category, source reference, and future review date, then choose **Publish to FAQ** or **Reject**.
+3. A published answer appears in FAQs, Knowledge Base, and subsequent chat retrieval for that question's role. Pending, rejected, and overdue answers are excluded.
+
+Publishing does not prove the reference is genuine. Reviewed answers remain explicitly **sample knowledge** in this owner-private prototype; they cannot establish food safety or bypass risk checks. Questions are saved only after an explicit submission. No message is sent to a manager automatically. Role selection is context, not authentication: add real manager authorization before sharing this review workflow with employees.
+
+`shared/faq.ts` defines the contract. `server/faq/store.ts` contains prepared SQL, `questions.ts` handles the queue API, and `knowledge.ts` converts reviewed answers into ordinary knowledge documents. The original 1+2 agents remain unchanged in number.
+
+Hosted Sites uses D1 binding `DB`. Local development uses ignored `.data/frontline.sqlite`; `server/localDatabase.ts` applies generated migrations once at startup. Local and hosted records are separate. `db/schema.ts` is the schema; after changes, run `npm run db:generate` and inspect the new `drizzle/` migration. Never edit an already-applied migration. The build packages migrations under `dist/.openai/drizzle` for hosted deployment.
+
+The student version lists at most 500 records per status and at most 500 FAQs. It has no pagination or editing/reopening of reviewed records yet. History and handover drafts remain session-only.
+
+## Configure the emergency connection
+
+`server/workplace.ts` holds public contact configuration. The requested phone `123456` and label `HIGH_RISK_FAST.com` are fake, so `demo: true` returns no active links. The high-risk **Contact Manager** button opens an honest demo panel, not a simulated successful call.
+
+To enable a real connection, replace `phone` with a verified workplace number, optionally supply a verified HTTPS `contactUrl`, update `contactLabel`, and set `demo: false`. Rebuild and publish. The panel then opens a `tel:` link or the contact website/app; it does not confirm delivery or that anyone answered. API keys never belong in this configuration. In immediate danger, the panel directs workers to workplace emergency procedures and local emergency services without waiting for a manager.
 
 ## Read the code in this order
 
@@ -54,11 +74,11 @@ Follow one question through these small modules:
 9. `src/components/ActionCard.tsx`, `KnowledgePage.tsx`, and `WorkspaceDialogs.tsx`: cards, the read-only catalog, source viewing, and manager drafts. `src/App.tsx` owns conversation state.
 10. `server/dev.ts`, `nodeServer.ts`, and `worker.ts`: local and hosted adapters. `tests/` exercises the boundaries with fake providers and fake HTTP responses.
 
-There is no provider SDK, agent framework, database, vector store, application router, or extra state library. The [architecture walkthrough](docs/ARCHITECTURE.md) explains how the modules fit together.
+There is one FAQ database table. There is no provider SDK, agent framework, vector store, application router, or extra state library. Drizzle is a development tool for generating the database schema; application queries use short prepared SQL statements. The [architecture walkthrough](docs/ARCHITECTURE.md) explains how the modules fit together.
 
 ## Replace the sample knowledge
 
-Edit **`server/knowledge/documents.ts`** on the backend. All included SOPs are fictional samples; their approval metadata demonstrates the software's version rules. They cannot establish an actual company's procedure or a product's ingredients.
+Edit **`server/knowledge/documents.ts`** for common SOPs and **`server/knowledge/roleDocuments.ts`** for the 36 role-specific FAQs on the backend. All included SOPs are fictional samples; their approval metadata demonstrates the software's version rules. They cannot establish an actual company's procedure or a product's ingredients.
 
 Each `KnowledgeDocument` contains:
 
@@ -78,7 +98,7 @@ Use `sample: false` only after replacing the sample content with actual company 
 
 When a policy changes, use the same `documentId` with a higher integer revision and the new approved content and dates. Do not relabel copied old text as a new policy. The highest already-effective non-draft revision is selected **before** expiry, role, or keyword filtering. If it is retired, overdue, or unavailable to the role, older approved text is not revived. A future revision does not replace the current revision until its effective day. Duplicate revisions and invalid dates are excluded. Expired sample policies also stop appearing until properly reviewed.
 
-Retrieval matches normalized keyword terms and returns at most four excerpts. Add meaningful keywords and explicit variants such as `allergy` and `allergic`; this is simple lexical retrieval, not semantic search. A missed match produces missing evidence. There are no document uploads or browser-side policy editing.
+Retrieval matches normalized keyword terms and returns at most four excerpts. Add meaningful keywords and explicit variants such as `allergy` and `allergic`; this is simple lexical retrieval, not semantic search. A missed match produces missing evidence. There are no document uploads. The review form can publish new sample FAQ answers; it cannot edit the source SOP dataset.
 
 Sample or missing evidence caps Action Card confidence at **low**. Current company evidence caps it at **medium**. A mixed sample/company result is treated as sample. Confidence describes procedural evidence, never whether a cake is safe. A keyword match is evidence of relevant text, not permission to act. Detected permission questions always require an Action Card and manager verification, even when a current company policy matches.
 
@@ -128,7 +148,17 @@ curl 'http://127.0.0.1:3001/api/knowledge?employee_role=waiter'
 
 A source contains `id`, `title`, `version`, `section`, `excerpt`, and an optional `sample` flag. The backend checks citations against the retrieved records and assigns the flag itself. Only explicit `sample: false` denotes company evidence; omitted flags on legacy example fixtures remain fictional.
 
-`GET /api/knowledge` returns current approved documents and their sections. The optional `employee_role` filters the catalog; omitting it returns the current catalog across roles. It uses the same current-version selector as chat retrieval and does not call an AI provider.
+Additional endpoints:
+
+- `GET /api/faq?employee_role=waiter`: current role FAQs and canonical sources.
+- `GET /api/questions?status=pending`: saved review queue (`published` and `rejected` are also supported).
+- `POST /api/questions`: `{question, employee_role}` creates a pending record.
+- `POST /api/questions/:id`: `{action: "publish", answer, category, source_reference, review_by}` or `{action: "reject"}`. Repeat decisions return `409`.
+- `GET /api/workplace`: public manager contact configuration.
+
+FAQ mutations require JSON and a matching Origin header when present; storage failures return a truthful `503`. These checks do not replace authentication.
+
+`GET /api/knowledge` returns current approved documents and their sections, including reviewed sample FAQs. The optional `employee_role` filters the catalog; omitting it returns the current catalog across roles. It uses the same current-version selector as chat retrieval and does not call an AI provider.
 
 Errors use `{ "error": "message" }`. Validation failures return `400`, oversized bodies `413`, non-JSON chat input `415`, wrong methods `405`, and unknown routes `404`. Live failures use safe messages: configuration/authentication `503`, usage limits `429`, refusal `422`, timeout `504`, and unusable output/network failure `502`. Internal failures return a sanitized `500`.
 
@@ -138,4 +168,4 @@ Only backend environment variables hold provider keys. Node loads the ignored lo
 
 An OpenAI key was provisioned through the approved secure workflow and saved locally. No additional provider keys were created for this MVP. Live validation still needs working outbound access and backend configuration; secure local-file-to-hosted-secret handoff remains pending. These source changes do not themselves update the published Site.
 
-The hosted build uses a Cloudflare Worker and its [static-assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). Its existing private Site audience is preserved. The role selector provides answer context, not authenticated employee identity or manager authority. This MVP has no persistent storage, company access control, real manager notifications, or streaming chat UI. Review the [verification record](docs/VERIFICATION.md) before treating it as a workplace deployment.
+The hosted build uses a Cloudflare Worker and its [static-assets binding](https://developers.cloudflare.com/workers/static-assets/binding/). Its existing private Site audience is preserved. The role selector provides answer context, not authenticated employee identity or manager authority. FAQ questions and reviewed answers persist in the database. This MVP has no authenticated employee/manager separation, real manager notifications, or streaming chat UI. Review the [verification record](docs/VERIFICATION.md) before treating it as a workplace deployment.

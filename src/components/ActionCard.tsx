@@ -6,6 +6,7 @@ import {
   UserRound,
 } from "lucide-react";
 import type { ActionResponse, Source } from "../../shared/chat";
+import { ManagerContact } from "./ManagerContact";
 
 export function SourceLinks({
   sources,
@@ -63,6 +64,15 @@ export function ActionCard({
       <div className="action-card-body">
         <div className="section-eyebrow">SITUATION</div>
         <h2>{response.summary}</h2>
+        {response.risk === "high" && (
+          <div className="urgent-contact">
+            <div>
+              <strong>Need immediate help?</strong>
+              <p>Stop the unsafe activity. Contact your manager for help.</p>
+            </div>
+            <ManagerContact urgent />
+          </div>
+        )}
         <div className="section-eyebrow actions-heading">
           RECOMMENDED ACTIONS
         </div>
@@ -115,11 +125,12 @@ export function ActionCard({
             View Source
           </button>
           {response.escalate && (
-            <button className="button primary" onClick={onEscalate}>
+            <button className="button secondary" onClick={onEscalate}>
               <UserRound size={15} />
-              Ask Manager
+              Prepare handover
             </button>
           )}
+          {response.escalate && response.risk !== "high" && <ManagerContact />}
         </div>
       </div>
     </section>
