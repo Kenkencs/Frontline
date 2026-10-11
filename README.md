@@ -1,2 +1,2 @@
-# Frontline Workplace Knowledge Agent
+# Workplace Knowledge Agent
 
