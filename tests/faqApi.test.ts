@@ -258,7 +258,10 @@ test("a saved question stays pending until a complete review publishes role-only
   );
   assert.ok(reply.type === "message");
   assert.ok(reply.content.includes(answer));
-  assert.match(reply.content, /fictional samples/);
+  assert.match(
+    reply.content,
+    /Sample guidance: check your current workplace procedure\./,
+  );
   assert.deepEqual(
     reply.sources.map((source) => source.id),
     [sourceId],

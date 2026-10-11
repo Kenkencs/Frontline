@@ -1,8 +1,21 @@
 # Current MVP status
 
-The `1.1.0` source adds role-specific FAQs, persistent question review, reuse in retrieval, and an emergency manager-contact panel. **132 tests pass**, including actual SQLite and Worker D1-adapter integration. Version 6 of the original demo was published privately and the owner verified its allergy flow on 11 October 2026. The new release's publication receipt is maintained beside the source in `frontline-deployment.md`.
+The `1.1.1` source improves response wording and separates routine guidance questions from permission requests. It retains the role-specific FAQs, persistent question review, retrieval, and emergency manager-contact panel from `1.1.0`. The latest publication receipt is maintained beside the source in `frontline-deployment.md`.
 
-The records below are historical. The latest 1.1.0 section supersedes earlier statements about deferred code, storage, and deployment. Live providers remain unverified and hosted API keys remain unconfigured.
+The records below are historical. The latest release sections supersede earlier statements about deferred code, storage, and deployment. Live providers remain unverified and hosted API keys remain unconfigured.
+
+## Response wording update — 1.1.1
+
+Checked on 11 October 2026:
+
+- Routine questions such as “What should I do?” no longer automatically count as requests to change a procedure. Each permission phrase is checked separately, so a routine opening clause cannot hide a later request to skip, override, or change a rule.
+- All 36 curated FAQs have no occurrence of the old generic manager-verification summary. Their response distribution is 30 ordinary messages, five medium-risk cards for money/transaction issues, and one high-risk contamination card.
+- Refund, receipt, payment, cash, and complaint cards have specific summaries and application-owned steps. A receipt-printer paraphrase without the word “payment” correctly retrieves the Cashier FAQ and keeps transaction verification.
+- Ordinary sample guidance retains source citations and one short sample reminder. Missing evidence, genuine permission decisions, allergies, emergencies, and recognized hazards preserve escalation. Provider-generated unsafe claims cannot replace application-owned sample guidance.
+- All **142 tests passed**, along with the production React/Worker build and TypeScript checks. Tests use fake upstreams; no paid model request was made.
+- Local browser QA verified the delayed-order question as an ordinary source-backed reply, and “The receipt printer is not printing. What should I do?” as a receipt-specific Action Card with the Cashier sample source. The screenshot beside the source records the ordinary reply. The layout did not change; no new device/accessibility matrix was run.
+
+Production UI interactions were not independently reverified; prior automated access was blocked at the private site's edge. Native deployment results and local behavior checks are recorded separately from owner verification.
 
 # Increment 1 verification
 

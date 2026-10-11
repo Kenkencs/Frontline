@@ -150,6 +150,7 @@ test("operational hazards remain high risk even when a source claims safety", ()
     "A worker smells gas in the kitchen.",
     "A worker is injured and bleeding.",
     "We suspect cross-contamination with raw chicken.",
+    "Raw and ready-to-eat ingredients may have mixed. What should I do?",
     "廚房出現火災。",
     "食物可能变质，有交叉污染。",
   ]) {
@@ -175,16 +176,16 @@ test("money and difficult customer cases require policy and authority checks wit
     assert.equal(result.risk, "medium");
     assert.equal(result.escalate, true);
     assert.equal(result.requiresAction, true);
+    assert.match(result.requiredActions.join(" "), /manager/i);
     assert.match(
-      result.requiredActions[0],
-      /company policy and your authority/,
+      result.requiredActions.join(" "),
+      /policy|procedure|authority|approved/i,
     );
-    assert.match(result.requiredActions[1], /manager.*approve.*not authorized/);
   }
 });
 
-test("missing or sample knowledge forces manager verification while ordinary questions stay messages", () => {
-  for (const knowledge of [missing, sample, { ...company, sources: [] }]) {
+test("missing evidence requires verification while ordinary questions stay messages", () => {
+  for (const knowledge of [missing, { ...company, sources: [] }]) {
     const result = assessRisk("Where is the employee handbook?", knowledge);
     assert.equal(result.risk, "low");
     assert.equal(result.confidence, "low");
@@ -197,13 +198,20 @@ test("missing or sample knowledge forces manager verification while ordinary que
     );
   }
   assert.match(
-    assessRisk("Where is the handbook?", sample).reason,
-    /Sample documents/,
-  );
-  assert.match(
     assessRisk("Where is the handbook?", missing).reason,
-    /evidence is missing/,
+    /current company procedure.*missing/,
   );
+});
+
+test("routine sample questions require a brief workplace-procedure note without automatic escalation", () => {
+  const result = assessRisk("Where is the employee handbook?", sample);
+  assert.equal(result.risk, "low");
+  assert.equal(result.confidence, "low");
+  assert.equal(result.requiresAction, false);
+  assert.equal(result.escalate, false);
+  assert.deepEqual(result.requiredActions, [
+    "Sample guidance: check your current workplace procedure.",
+  ]);
 });
 
 test("ordinary opening checklists remain messages with or without current company evidence", () => {
@@ -221,7 +229,142 @@ test("ordinary opening checklists remain messages with or without current compan
     );
     assert.equal(checklist.risk, "low");
     assert.equal(checklist.requiresAction, false);
-    assert.equal(checklist.escalate, knowledge.mode !== "company");
+    assert.equal(checklist.escalate, knowledge.mode === "none");
+  }
+});
+
+test("routine information wording does not itself request authority", () => {
+  for (const knowledge of [company, sample, missing]) {
+    for (const question of [
+      "The dish a guest ordered has sold out. How should I explain it?",
+      "A guest's dish is delayed. What update can I give?",
+      "A guest reports lost property. How should I help?",
+      "Where can I find the opening checklist?",
+      "How can I help a guest find lost property?",
+      "What should I record in the shift handover?",
+      "Which version should I use for the opening checklist?",
+      "What should we tell the next colleague?",
+      "How may we coordinate with the service team?",
+    ]) {
+      const result = assessRisk(question, knowledge);
+      assert.equal(result.risk, "low", question);
+      assert.equal(result.requiresAction, false, question);
+      assert.equal(result.escalate, knowledge.mode === "none", question);
+    }
+  }
+});
+
+test("routine questions cannot hide a separate permission request or an explicit bypass", () => {
+  for (const knowledge of [company, sample, missing]) {
+    for (const question of [
+      "Where can I find the checklist? Can I leave early?",
+      "What should I record? May we make an exception?",
+      "How can I bypass the procedure?",
+      "What should I check before skipping the approval step?",
+      "Where can I find instructions to override the procedure?",
+      "How should I ignore the procedure?",
+      "What should I do before changing the opening procedure?",
+      "How can we alter the required checklist?",
+      "What should I do about an unauthorized change?",
+      "Can I leave early? Where can I find the checklist?",
+      "Can I invent a new workflow?",
+      "Am I allowed to change the opening time?",
+    ]) {
+      const result = assessRisk(question, knowledge);
+      assert.equal(result.requiresAction, true, question);
+      assert.equal(result.escalate, true, question);
+      assert.match(
+        result.requiredActions.join(" "),
+        /manager.*authority/i,
+        question,
+      );
+    }
+  }
+});
+
+test("routine wording retains allergy, emergency, and violence safeguards", () => {
+  for (const question of [
+    "How can I help a guest with a peanut allergy?",
+    "What should I record while a customer cannot breathe?",
+    "Someone is threatening guests with a knife. Where can I find the checklist?",
+  ]) {
+    const result = assessRisk(question, sample);
+    assert.equal(result.risk, "high", question);
+    assert.equal(result.requiresAction, true, question);
+    assert.equal(result.escalate, true, question);
+    assert.equal(result.confidence, "low");
+    if (/breathe|knife/.test(question)) {
+      assert.match(result.requiredActions[0], /local emergency services/);
+      assert.match(result.requiredActions[1], /Do not delay emergency help/);
+    } else {
+      assert.ok(
+        result.requiredActions.includes(
+          "Do not confirm that the food is safe.",
+        ),
+      );
+      assert.ok(
+        result.requiredActions.includes(
+          "Check cross-contamination information.",
+        ),
+      );
+    }
+  }
+});
+
+test("money categories provide different practical checks without granting payment or refund authority", () => {
+  const cases = [
+    {
+      question:
+        "A customer asks for a refund. What information should I collect?",
+      topic: /refund/i,
+      steps: /item|reason|receipt|transaction reference/i,
+    },
+    {
+      question: "A payment may have been charged twice. What should I check?",
+      topic: /payment|transaction/i,
+      steps: /status|duplicate|confirmed|charge/i,
+    },
+    {
+      question: "The cash drawer total does not match. What should I record?",
+      topic: /cash|drawer|mismatch|difference/i,
+      steps: /recount|reconcil|record/i,
+    },
+    {
+      question: "An angry customer makes a complaint. How should I respond?",
+      topic: /complaint|customer/i,
+      steps: /listen|clarify|record/i,
+    },
+  ];
+  const summaries = new Set<string>();
+  for (const { question, topic, steps } of cases) {
+    const result = assessRisk(question, company);
+    assert.equal(result.risk, "medium", question);
+    assert.equal(result.requiresAction, true);
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, topic);
+    assert.match(result.requiredActions.join(" "), steps);
+    assert.match(result.requiredActions.join(" "), /manager/i);
+    summaries.add(result.reason);
+  }
+  assert.equal(summaries.size, cases.length);
+});
+
+test("receipt trouble provides transaction, printer, and approved reprint checks", () => {
+  for (const question of [
+    "The receipt did not print after payment. What should I check?",
+    "The receipt printer is not printing. What should I do?",
+  ]) {
+    const result = assessRisk(question, company);
+    assert.equal(result.risk, "medium", question);
+    assert.equal(result.requiresAction, true);
+    assert.equal(result.escalate, true);
+    assert.match(result.reason, /receipt.*print/i);
+    const actions = result.requiredActions.join(" ");
+    assert.match(actions, /transaction.*status|payment.*(?:status|completed)/i);
+    assert.match(actions, /printer|paper/i);
+    assert.match(actions, /reprint/i);
+    assert.match(actions, /approved|permitted|current.*procedure/i);
+    assert.match(actions, /manager/i);
   }
 });
 

@@ -4,6 +4,7 @@ import { runMainAgent } from "../server/agents/mainAgent";
 import { handleApiRequest } from "../server/api";
 import type { KnowledgeDocument } from "../server/knowledge/types";
 import { retrieveKnowledge } from "../server/knowledge/retrieve";
+import { knowledgeDocuments } from "../server/knowledge/documents";
 import {
   ProviderError,
   type AIProvider,
@@ -294,8 +295,132 @@ test("unsupported low-risk Action Card instructions also use application-owned v
   assert.equal(result.type, "action");
   if (result.type !== "action") assert.fail();
   assert.ok(!result.actions.includes(card.actions[0]));
-  assert.match(result.summary, /manager verification/);
+  assert.notEqual(result.summary, card.summary);
+  assert.match(result.summary, /current company procedure.*missing/);
+  assert.ok(
+    result.actions.some((action) =>
+      /current relevant company policy/.test(action),
+    ),
+  );
   assert.equal(result.escalate, true);
+});
+
+test("all curated routine FAQs return concrete sourced messages while money and contamination remain actionable", async () => {
+  const medium = new Set([
+    "cash-difference",
+    "missing-receipt",
+    "refund-request",
+    "split-tender",
+    "cash-handover",
+  ]);
+  let checked = 0;
+  for (const document of knowledgeDocuments) {
+    for (const section of document.sections) {
+      if (!section.question) continue;
+      checked++;
+      const result = await runMainAgent(
+        {
+          ...input,
+          employee_role: document.roles[0],
+          message: section.question,
+        },
+        { mode: "demo", documents: knowledgeDocuments, now },
+      );
+      assert.ok(result.sources.length > 0, section.question);
+      assert.ok(result.sources.every((citation) => citation.sample === true));
+      if (medium.has(section.id) || section.id === "raw-food-separation") {
+        assert.equal(result.type, "action", section.question);
+        if (result.type !== "action") assert.fail();
+        assert.equal(
+          result.risk,
+          section.id === "raw-food-separation" ? "high" : "medium",
+        );
+        assert.equal(result.escalate, true);
+        assert.equal(result.confidence, "low");
+        continue;
+      }
+      assert.equal(result.type, "message", section.question);
+      if (result.type !== "message") assert.fail();
+      assert.ok(result.content.includes(section.excerpt), section.question);
+      assert.match(
+        result.content,
+        /Sample guidance: check your current workplace procedure\./,
+      );
+      assert.doesNotMatch(
+        result.content,
+        /This situation needs manager verification before action/,
+      );
+      assert.ok(
+        result.sources.some((citation) => citation.excerpt === section.excerpt),
+      );
+    }
+  }
+  assert.equal(checked, 36);
+});
+
+test("routine live sample replies use the retrieved guidance without an automatic manager sentence", async () => {
+  const request = {
+    ...input,
+    message: "A guest reports lost property. How should I help?",
+  };
+  const result = await run(
+    {
+      type: "message",
+      content:
+        "Invented provider instruction: hand over the item without checking ownership.",
+      sources: [],
+    },
+    knowledgeDocuments,
+    request,
+  );
+  assert.equal(result.type, "message");
+  if (result.type !== "message") assert.fail();
+  assert.match(result.content, /Record a description/);
+  assert.match(result.content, /Verify ownership/);
+  assert.match(
+    result.content,
+    /Sample guidance: check your current workplace procedure\./,
+  );
+  assert.doesNotMatch(
+    result.content,
+    /Invented provider instruction|Ask the manager to verify the current company policy/,
+  );
+  assert.ok(result.sources.every((citation) => citation.sample === true));
+});
+
+test("mixed routine and permission questions cannot expose provider authorization", async () => {
+  for (const message of [
+    "Where can I find the opening checklist? Can I leave early?",
+    "How can I bypass the opening procedure?",
+  ]) {
+    const request = { ...input, message };
+    await assert.rejects(
+      run(
+        {
+          type: "message",
+          content: "You may do it without approval.",
+          sources: [],
+        },
+        [],
+        request,
+      ),
+      ProviderError,
+    );
+    const result = await run(
+      { ...card, risk: "low", confidence: "low", sources: [] },
+      [],
+      request,
+    );
+    assert.equal(result.type, "action");
+    if (result.type !== "action") assert.fail();
+    assert.equal(result.escalate, true);
+    assert.match(result.actions.join(" "), /manager.*authority/i);
+    assert.ok(!result.actions.includes(card.actions[0]));
+    assert.doesNotMatch(
+      result.summary,
+      /This situation needs manager verification before action/,
+    );
+  }
 });
 
 test("demo mode runs the same retrieval and risk checks without a provider", async () => {

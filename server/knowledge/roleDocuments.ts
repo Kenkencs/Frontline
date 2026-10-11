@@ -65,7 +65,12 @@ export const roleDocuments: KnowledgeDocument[] = [
       question: "The receipt did not print after payment. What should I check?",
       excerpt:
         "Confirm the transaction status in the register before attempting another payment. Check the printer's paper and displayed error using the approved instructions. Reprint the receipt through the permitted process or ask the manager for help; protect the customer's transaction information.",
-      keywords: ["receipt print", "missing receipt", "printer paper"],
+      keywords: [
+        "receipt print",
+        "receipt printer",
+        "missing receipt",
+        "printer paper",
+      ],
     },
     {
       id: "incorrect-price",

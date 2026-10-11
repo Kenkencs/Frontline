@@ -719,7 +719,7 @@ test("Worker passes each new backend binding to its provider without serving ass
     assert.match(reply.content, /Read the handover/);
     assert.match(
       reply.content,
-      /manager.*current company policy.*fictional samples/,
+      /Sample guidance: check your current workplace procedure\./,
     );
     assert.equal(reply.sources.length, 1);
     const source = reply.sources[0];

@@ -54,6 +54,18 @@ test("sample allergy evidence is current, traceable, and never the retired revis
     ),
   );
 });
+test("receipt-printer paraphrase retrieves the cashier FAQ without a payment keyword", () => {
+  const question = "The receipt printer is not printing. What should I do?";
+  const result = retrieveKnowledge(question, "cashier", knowledgeDocuments, now);
+  assert.equal(result.missing, false);
+  assert.equal(result.mode, "sample");
+  const source = result.sources.find(item => item.id === "cashier-faq:1:missing-receipt");
+  assert.ok(source);
+  assert.match(source.excerpt, /transaction status/);
+  assert.match(source.excerpt, /printer's paper/);
+  assert.match(source.excerpt, /Reprint the receipt/);
+  assert.ok(!retrieveKnowledge(question, "waiter", knowledgeDocuments, now).sources.some(item => item.id === source.id));
+});
 test("latest revision is chosen before matching keywords or staff roles", () => {
   const latest = document({
     revision: 2,

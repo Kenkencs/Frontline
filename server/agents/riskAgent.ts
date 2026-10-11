@@ -22,8 +22,33 @@ const hazard =
   /\b(injur\w*|bleed\w*|burn\w*|fire|smoke|gas|chemical\w*|poison\w*|electric shock|food safety|unsafe food|food poisoning|cross[- ]?contamination|spoil\w*|mould\w*|mold\w*|undercooked|raw chicken)\b|受傷|受伤|流血|出血|燒傷|烧伤|火災|火灾|燃氣|燃气|煤氣|煤气|化學|化学|中毒|電擊|电击|食品安全|食物安全|交叉污染|變質|变质|未煮熟/i;
 const moneyOrComplaint =
   /\b(refund\w*|payment\w*|cash|till|money|discount\w*|void|transaction\w*|complain\w*|angry|abusive|theft|harass\w*|authoriz\w*|permission\w*)\b|退款|退錢|退钱|付款|支付|現金|现金|收銀|收银|投訴|投诉|客訴|客诉|折扣|騷擾|骚扰|授權|授权/i;
-const policyDecision =
-  /\b((can|may|should) (i|we)|am i allowed|are we allowed|authoriz\w*|permission)\b|可不可以|可否|能否|是否允許|是否允许|允許|允许|授權|授权/i;
+const receiptPrinting = /\breceipt\b.*\bprint\w*\b|\bprint\w*\b.*\breceipt\b/i;
+const explicitPermission =
+  /\b(am i allowed|are we allowed|(?:un)?authori[sz]\w*|unapproved|permission|bypass\w*|skip\w*|overrid\w*|ignor\w*|exceptions?)\b|\b(chang\w*|alter\w*|deviat\w*)\b.*\b(procedur\w*|policy|policies|checklist|opening|closing|time|temperature|recipe|limit|price|rule|step)\b|可不可以|可否|能否|是否允許|是否允许|允許|允许|授權|授权/i;
+
+function asksForPermission(message: string): boolean {
+  if (explicitPermission.test(message)) return true;
+  // Check each occurrence, so a routine question cannot hide a second request
+  // for permission. "What should I check?" asks for guidance, not an exception.
+  return [...message.matchAll(/\b(can|may|should) (i|we)\b/gi)].some(
+    (match) => {
+      const before = message.slice(0, match.index);
+      const after = message.slice(match.index! + match[0].length);
+      const routinePrefix =
+        /\b(what(?: (?:information|update|details))?|how|where|which (?:version|procedure|checklist))\s*$/i.test(
+          before,
+        );
+      const routineVerb =
+        /^\s+(do|check|record|tell|say|ask|share|confirm|give|help|find|explain|respond|coordinate|start|use|arrange|look|locate|keep)\b/i.test(
+          after,
+        );
+      return !(routinePrefix && routineVerb);
+    },
+  );
+}
+
+const possibleContamination =
+  /\braw\b.*\bready[- ]to[- ]eat\b.*\b(mix\w*|touch\w*|contact)\b|\bready[- ]to[- ]eat\b.*\braw\b.*\b(mix\w*|touch\w*|contact)\b/i;
 const foodSafetyDecision =
   /\b(food|cake|meal|dish|product|eat|serve)\b.*\b(safe|okay|ok)\b|\b(safe|okay|ok)\b.*\b(food|cake|meal|dish|product|eat|serve)\b|\b(can|may|should) (she|he|they|the customer) eat\b|可.*食用|能.*吃|安全.*食|食.*安全/i;
 
@@ -34,10 +59,11 @@ export function assessRisk(
   const hasAllergy = allergy.test(message);
   const hasViolence = violenceOrRobbery.test(message);
   const hasEmergency = emergency.test(message) || hasViolence;
-  const hasHazard = hazard.test(message);
+  const hasHazard = hazard.test(message) || possibleContamination.test(message);
   const foodDecision = foodSafetyDecision.test(message);
-  const permissionDecision = policyDecision.test(message);
-  const needsApproval = moneyOrComplaint.test(message);
+  const permissionDecision = asksForPermission(message);
+  const needsApproval =
+    moneyOrComplaint.test(message) || receiptPrinting.test(message);
   const missing =
     knowledge.missing || knowledge.mode === "none" || !knowledge.sources.length;
   const sample = knowledge.mode === "sample";
@@ -84,12 +110,55 @@ export function assessRisk(
     }
   } else if (needsApproval) {
     risk = "medium";
-    reason =
-      "A payment, refund, or difficult customer situation needs company-policy and authority checks.";
-    requiredActions.push(
-      "Check the current company policy and your authority before making a refund, payment, or exception.",
-      "Ask the manager to approve any action you are not authorized to take.",
-    );
+    if (/\brefund\w*\b|退款|退錢|退钱/i.test(message)) {
+      reason = "Refund request: check the transaction and your approval limit.";
+      requiredActions.push(
+        "Check the receipt or transaction record and clarify the reason for the refund.",
+        "Check the current company refund policy and your authority before promising or processing a refund.",
+        "Ask the manager to approve a refund or exception outside your authority.",
+      );
+    } else if (receiptPrinting.test(message)) {
+      reason =
+        "Receipt printing: confirm the transaction and check the printer.";
+      requiredActions.push(
+        "Check whether the payment completed in the register before taking another payment.",
+        "Check the printer's paper and displayed error using the approved instructions.",
+        "Use the permitted receipt-reprint process; ask the manager if the transaction is unclear or the printer still fails.",
+      );
+    } else if (/\b(cash|till|money)\b|現金|现金|收銀|收银/i.test(message)) {
+      reason = "Cash handling: check the records before making an adjustment.";
+      requiredActions.push(
+        "Compare the register records with the reported difference, following the current cash-handling procedure.",
+        "Record the facts; do not change transaction records, conceal a difference, or cover it with personal money.",
+        "Ask the manager to review any unresolved difference before an adjustment.",
+      );
+    } else if (/\b(payment\w*|transaction\w*)\b|付款|支付/i.test(message)) {
+      reason =
+        "Payment issue: establish the transaction status before trying again.";
+      requiredActions.push(
+        "Check the register's transaction status and any receipt or terminal error.",
+        "Do not repeat the charge or issue money while the transaction status is unclear.",
+        "Follow the current payment procedure; ask the manager if the issue remains unresolved or requires approval.",
+      );
+    } else if (
+      /\b(complain\w*|angry|abusive|harass\w*)\b|投訴|投诉|客訴|客诉|騷擾|骚扰/i.test(
+        message,
+      )
+    ) {
+      reason =
+        "Customer concern: clarify the issue and the available next step.";
+      requiredActions.push(
+        "Listen calmly and confirm the customer's concern without promising an outcome.",
+        "Check the current company policy and your authority before offering a remedy or exception.",
+        "Involve the manager if the issue is outside your authority, remains unresolved, or you feel unsafe.",
+      );
+    } else {
+      reason = "Check your approval limit before making an exception.";
+      requiredActions.push(
+        "Check the current company policy and your authority before making a refund, payment, or exception.",
+        "Ask the manager to approve any action you are not authorized to take.",
+      );
+    }
   }
 
   if (permissionDecision) {
@@ -98,22 +167,24 @@ export function assessRisk(
     );
     if (risk === "low")
       reason =
-        "A policy match does not grant permission. Manager verification is required before making a change.";
+        "Changing a workplace procedure or making an exception may need approval.";
   }
 
   if (missing) {
     requiredActions.push(
       "Ask the manager for the current relevant company policy before taking action.",
     );
-    reason += " Current company evidence is missing.";
+    if (risk === "low" && !permissionDecision)
+      reason = "The current company procedure is missing for this question.";
   } else if (sample) {
     requiredActions.push(
-      "Ask the manager to verify the current company policy; the retrieved documents are fictional samples.",
+      risk !== "low" || permissionDecision
+        ? "Ask the manager to verify the current company policy; the retrieved documents are fictional samples."
+        : "Sample guidance: check your current workplace procedure.",
     );
-    reason += " Sample documents cannot verify company policy.";
   }
 
-  const escalate = risk !== "low" || missing || sample || permissionDecision;
+  const escalate = risk !== "low" || missing || permissionDecision;
   return {
     risk,
     escalate,

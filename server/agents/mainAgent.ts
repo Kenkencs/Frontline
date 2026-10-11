@@ -94,11 +94,7 @@ function combine(
     knowledge.mode !== "company";
   return {
     ...response,
-    summary: guarded
-      ? risk.risk !== "low"
-        ? risk.reason
-        : "This situation needs manager verification before action."
-      : response.summary,
+    summary: guarded ? risk.reason : response.summary,
     actions: guarded
       ? (risk.requiredActions.length
           ? risk.requiredActions

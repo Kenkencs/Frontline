@@ -91,7 +91,10 @@ function assertOrdinaryReply(
   if (evidence === "sample") {
     assert.ok(reply.content.startsWith("Relevant procedure:"));
     assert.match(reply.content, /Read the handover/);
-    assert.match(reply.content, /fictional samples/);
+    assert.match(
+      reply.content,
+      /Sample guidance: check your current workplace procedure\./,
+    );
     assert.equal(reply.sources.length, 1);
     const source = reply.sources[0];
     assert.equal(source.id, "opening-checklist:1:opening");
@@ -105,8 +108,8 @@ function assertOrdinaryReply(
       ),
     );
     assert.deepEqual(reply.sources, []);
+    assert.match(reply.content, /manager.*company policy/);
   }
-  assert.match(reply.content, /manager.*company policy/);
 }
 
 async function assertError(
