@@ -181,11 +181,4 @@ To change sample procedures, edit [`server/knowledge/documents.ts`](server/knowl
 - Local records live in ignored `.data/frontline.sqlite`. Hosted and local records are separate. There are no document uploads, delivered manager notifications, or streaming chat UI.
 - Manager contact details are fake and inactive. Real configuration can open a validated phone or HTTPS contact link; it cannot confirm that a manager received or answered the request.
 
-## Next steps
-
-- Verify live model requests and evaluate answers against a reviewed question set.
-- Replace fictional procedures with checked company documents and real manager contact details.
-- Add authenticated staff access and manager review permissions.
-- Run task-based trials with frontline workers and measure source accuracy, task completion, and appropriate escalation.
-
 The goal is a clear, maintainable workplace prototype that a student developer can understand and extend.
