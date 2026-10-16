@@ -1,4 +1,6 @@
-# Frontline Workplace Knowledge Agent
+# Frontline 
+
+Workplace Knowledge Agent
 
 A conversation-first workplace assistant for small and medium-sized businesses. Frontline helps staff find relevant procedures, follow clear next steps, and recognise when a situation needs manager help.
 
