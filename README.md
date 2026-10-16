@@ -29,7 +29,8 @@ npm ci
 npm run dev
 ```
 
-Open the frontend URL printed in the terminal, normally **http://127.0.0.1:5173**. The command starts both Vite and the Node backend. Press `Ctrl+C` to stop them.
+Open the frontend URL printed in the terminal, normally **http://127.0.0.1:5173**. 
+The command starts both Vite and the Node backend. Press `Ctrl+C` to stop them.
 
 Select a model labelled **demo**. No `.env` file or paid AI request is needed for the demo.
 
